@@ -20,6 +20,7 @@ Usage:
 Commands:
   build     Build a hybrid (BM25 + BGE) index from a source tree
   search    Query a prebuilt index
+  watch     Watch source dirs and rebuild on change (atomic swap)
   version   Print version information
 
 Run "gs <command> -h" for command-specific help.
@@ -46,6 +47,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	case "search":
 		if err := runSearch(args[1:], stdout, stderr); err != nil {
 			return printErr(stderr, "gs search", err)
+		}
+		return 0
+	case "watch":
+		if err := runWatch(args[1:], stdout, stderr); err != nil {
+			return printErr(stderr, "gs watch", err)
 		}
 		return 0
 	default:

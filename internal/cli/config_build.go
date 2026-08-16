@@ -15,7 +15,6 @@ import (
 )
 
 // runConfig: 按 --config 里的 schema + sources 建索引。
-// 提取失败默认跳过 (on_error: skip), 设为 fail 则整个 build 失败。
 func (o *buildOptions) runConfig(stderr io.Writer) error {
 	cfg, err := LoadConfig(o.config)
 	if err != nil {
@@ -25,26 +24,21 @@ func (o *buildOptions) runConfig(stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("schema: %w", err)
 	}
-	if o.maxEmbedRunes > 0 {
-		s := *schema
-		s.MaxEmbedRunes = o.maxEmbedRunes
-		schema = &s
-	}
-	needEmb := false
-	for _, f := range schema.Fields {
-		if f.Embeddable {
-			needEmb = true
-			break
-		}
-	}
-
+	o.applyMaxEmbedRunes(schema)
+	needEmb := schemaHasEmbeddable(schema)
 	if err := o.validateConfigOutput(needEmb); err != nil {
 		return err
 	}
 	if len(cfg.Sources) == 0 {
 		return errors.New("config: sources is required")
 	}
+	_, err = o.buildConfigTo(cfg, schema, o.output, stderr)
+	return err
+}
 
+// buildConfigTo: 遍历 sources 提取为 Item 并 Add, 然后把索引 Build 到 destDir
+// (dryRun 只统计不落盘)。返回 item 数。
+func (o *buildOptions) buildConfigTo(cfg *Config, schema *gs.Schema, destDir string, stderr io.Writer) (int, error) {
 	tagsFields := map[string]bool{}
 	for _, f := range schema.Fields {
 		if f.Type == gs.FieldTags {
@@ -56,22 +50,21 @@ func (o *buildOptions) runConfig(stderr io.Writer) error {
 	if !o.dryRun {
 		builderOpts = append(builderOpts, gs.WithBGEPaths(o.bgeWeights, o.bgeVocab))
 	}
-	builder, err := gs.NewBuilder(schema, o.output, builderOpts...)
+	builder, err := gs.NewBuilder(schema, destDir, builderOpts...)
 	if err != nil {
-		return fmt.Errorf("new builder: %w", err)
+		return 0, fmt.Errorf("new builder: %w", err)
 	}
 	defer builder.Close()
 
-	fmt.Fprintf(stderr, "[gs] config=%s output=%s\n", o.config, o.output)
 	t0 := time.Now()
 	var count, errs int
 
 	for si, src := range cfg.Sources {
 		if src.Dir == "" {
-			return fmt.Errorf("sources[%d].dir is required", si)
+			return 0, fmt.Errorf("sources[%d].dir is required", si)
 		}
 		if src.Format == "" {
-			return fmt.Errorf("sources[%d].format is required", si)
+			return 0, fmt.Errorf("sources[%d].format is required", si)
 		}
 		include := src.Include
 		if include == "" {
@@ -82,7 +75,7 @@ func (o *buildOptions) runConfig(stderr io.Writer) error {
 			onError = "skip"
 		}
 		if onError != "skip" && onError != "fail" {
-			return fmt.Errorf("sources[%d].on_error must be 'skip' or 'fail'", si)
+			return 0, fmt.Errorf("sources[%d].on_error must be 'skip' or 'fail'", si)
 		}
 
 		walkErr := filepath.WalkDir(src.Dir, func(p string, d fs.DirEntry, werr error) error {
@@ -131,7 +124,7 @@ func (o *buildOptions) runConfig(stderr io.Writer) error {
 			return nil
 		})
 		if walkErr != nil {
-			return fmt.Errorf("walk %s: %w", src.Dir, walkErr)
+			return 0, fmt.Errorf("walk %s: %w", src.Dir, walkErr)
 		}
 	}
 
@@ -140,22 +133,40 @@ func (o *buildOptions) runConfig(stderr io.Writer) error {
 
 	if o.dryRun {
 		fmt.Fprintf(stderr, "[gs] --dry-run set: index not built\n")
-		return nil
+		return count, nil
 	}
 	if count == 0 {
-		return errors.New("no documents matched any source")
+		return 0, errors.New("no documents matched any source")
 	}
 
 	fmt.Fprintf(stderr, "[gs] building index for %d items (BGE encoding may take a while)...\n", count)
 	t1 := time.Now()
 	if err := builder.Build(); err != nil {
-		return fmt.Errorf("build: %w", err)
+		return 0, fmt.Errorf("build: %w", err)
 	}
-	fmt.Fprintf(stderr, "[gs] build done in %v → %s\n", time.Since(t1).Round(time.Millisecond), o.output)
-	if sz, err := sizeOfDir(o.output); err == nil {
-		fmt.Fprintf(stderr, "[gs] index payload: %s (%d files)\n", humanBytes(sz), countFiles(o.output))
+	fmt.Fprintf(stderr, "[gs] build done in %v → %s\n", time.Since(t1).Round(time.Millisecond), destDir)
+	if sz, err := sizeOfDir(destDir); err == nil {
+		fmt.Fprintf(stderr, "[gs] index payload: %s (%d files)\n", humanBytes(sz), countFiles(destDir))
 	}
-	return nil
+	return count, nil
+}
+
+// applyMaxEmbedRunes: --max-embed-runes 覆盖 schema
+func (o *buildOptions) applyMaxEmbedRunes(schema *gs.Schema) {
+	if o.maxEmbedRunes > 0 {
+		s := *schema
+		s.MaxEmbedRunes = o.maxEmbedRunes
+		*schema = s
+	}
+}
+
+func schemaHasEmbeddable(s *gs.Schema) bool {
+	for _, f := range s.Fields {
+		if f.Embeddable {
+			return true
+		}
+	}
+	return false
 }
 
 // validateConfigOutput: 校验 output 与 BGE 路径（只有 schema 含 embeddable 字段时才要求 BGE）

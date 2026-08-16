@@ -106,6 +106,18 @@ func TestExtractFormats(t *testing.T) {
 	if len(items) != 2 || items[0].Fields["title"] != "T1" || items[1].Fields["title"] != "T2" {
 		t.Fatalf("csv items = %+v", items)
 	}
+
+	// ndjson / jsonl (每行一个文档)
+	ndj := "{\"title\":\"N1\",\"body\":\"B1\"}\n{\"title\":\"N2\",\"body\":\"B2\"}\n"
+	ndPath := filepath.Join(t.TempDir(), "d.ndjson")
+	writeFile(t, ndPath, ndj)
+	items, err = extractSourceFile(SourceConfig{Format: "ndjson", Mapping: map[string]string{"title": "title", "body": "body"}}, noTags, ndPath, "d.ndjson")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].Fields["title"] != "N1" || items[1].Fields["title"] != "N2" {
+		t.Fatalf("ndjson items = %+v", items)
+	}
 }
 
 func TestRunConfigBuild(t *testing.T) {

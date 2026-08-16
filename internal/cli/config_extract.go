@@ -14,6 +14,7 @@ package cli
 
 import (
 	"archive/zip"
+	"bufio"
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
@@ -70,6 +71,11 @@ func extractSourceFile(src SourceConfig, tagsFields map[string]bool, absPath, re
 		items = append(items, it)
 	case "csv":
 		items, err = extractCSV(data, relPath, src.Mapping, tagsFields)
+		if err != nil {
+			return nil, err
+		}
+	case "ndjson", "jsonl":
+		items, err = extractNDJSON(data, relPath, src.Mapping, tagsFields)
 		if err != nil {
 			return nil, err
 		}
@@ -242,6 +248,37 @@ func headerIndex(header []string, name string) int {
 		}
 	}
 	return -1
+}
+
+// ------------------------------------------------------------------ ndjson / jsonl
+
+// extractNDJSON: JSON Lines —— 每行一个 JSON 对象, 每行一个文档。
+func extractNDJSON(data []byte, relPath string, mapping map[string]string, tags map[string]bool) ([]gs.Item, error) {
+	var out []gs.Item
+	sc := bufio.NewScanner(bytes.NewReader(data))
+	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024) // 允许单行较长
+	lineNo := 0
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		lineNo++
+		var root interface{}
+		if err := json.Unmarshal(line, &root); err != nil {
+			return nil, fmt.Errorf("line %d: %w", lineNo, err)
+		}
+		it, err := buildItem(root, "", fmt.Sprintf("%s#%d", relPath, lineNo), mapping, tags)
+		if err != nil {
+			return nil, err
+		}
+		it.Path = relPath
+		out = append(out, it)
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // ------------------------------------------------------------------ xlsx (minimal)

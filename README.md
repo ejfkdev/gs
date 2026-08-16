@@ -153,13 +153,28 @@ gs build --config index.yaml --output ./indexes/myindex \
 
 | 项 | 说明 |
 |---|---|
-| 支持的格式 | `json` / `yaml` / `frontmatter`(skill) / `text` / `csv` / `xlsx` |
+| 支持的格式 | `json` / `yaml` / `frontmatter`(skill) / `text` / `csv` / `ndjson`(jsonl) / `xlsx` |
 | `include` | glob（支持 `**`，如 `**/*.json`、`docs/**/*.md`） |
 | `mapping` | 字段 → 点路径（`title`、`a.b[0].c`）；frontmatter/text 用 `__body__`/`__text__` 取正文 |
 | `on_error` | 解析失败策略：`skip`（默认，跳过并告警）或 `fail`（整体失败） |
 | `type` | `text` / `longtext` / `tags` |
 
-解析失败默认跳过（打日志不中断）；要严格失败就设 `on_error: fail`。`csv`/`xlsx` 每行一个文档（首行表头，`mapping` 填列名或 0 基列号）。
+解析失败默认跳过（打日志不中断）；要严格失败就设 `on_error: fail`。`csv`/`xlsx`/`ndjson` 每行/每条一个文档（`csv`/`xlsx` 首行表头，`mapping` 填列名或 0 基列号；`ndjson` 每行一个 JSON 对象）。
+
+## 监控目录增量索引（gs watch）
+
+`gs watch` 监听源目录，变化后自动重建，并用**原子替换**发布索引——搜索进程可以无锁并发读、不受更新影响：
+
+```bash
+gs watch --config index.yaml --output ./indexes/myindex \
+    --bge-weights ./model/model.safetensors --bge-vocab ./model/vocab.txt \
+    --interval 5s
+```
+
+- 每次变更做全量重建，建到临时目录后一次性 `rename` 换进 `--output`。
+- 搜索进程 `Load` 时几乎总读到完整快照；正在加载的若恰好撞上交换瞬间（目录短暂缺失），CLI 搜索会自动重试几次兜底。
+- 崩溃恢复：重启时清理残留的临时/备份目录并做一次全量重建，无需状态日志。
+- 同一目录同时只允许一个 watch（用 `<output>.watch.lock` 互斥）。
 
 ## 作为 Go 库使用
 

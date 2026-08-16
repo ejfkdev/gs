@@ -19,9 +19,28 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ejfkdev/gs"
 )
+
+// loadWithRetry: 加载索引, 遇到"目录/文件不存在"做短重试 (gs watch 原子替换瞬间
+// 目录会短暂缺失, 用重试兜底避免搜索偶发失败)。
+func loadWithRetry(dir string) (*gs.Engine, error) {
+	var last error
+	for i := 0; i < 5; i++ {
+		eng, err := gs.Load(dir)
+		if err == nil {
+			return eng, nil
+		}
+		last = err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+	}
+	return nil, last
+}
 
 // searchOptions: search 子命令的全部 flag
 type searchOptions struct {
@@ -168,7 +187,7 @@ func runSearchMode(opts searchOptions, query string, stdout io.Writer) error {
 		return fmt.Errorf("--index %q is not a directory", opts.indexDir)
 	}
 
-	eng, err := gs.Load(opts.indexDir)
+	eng, err := loadWithRetry(opts.indexDir)
 	if err != nil {
 		return fmt.Errorf("load index: %w", err)
 	}
