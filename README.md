@@ -111,6 +111,56 @@ gs search --index ./indexes/wiki --doc /path/to/long_text.txt
 rsync -av --progress ./indexes/ user@linux:/data/gs/indexes/
 ```
 
+## 配置驱动索引（--config）
+
+不想写代码、又有固定字段结构的数据（JSON / YAML / XML 类的），可以用一个 YAML 配置声明「索引哪些文件、每个字段怎么取」：
+
+```yaml
+# index.yaml
+schema:
+  name: myindex
+  name_field: title
+  fields:
+    - {name: title,   type: text,     searchable: true, embeddable: true, weight: 5.0, display: true}
+    - {name: body,    type: longtext, searchable: true, embeddable: true, weight: 1.0, display: true, snippet: true}
+    - {name: tags,    type: tags,     searchable: true, embeddable: true, weight: 3.0, display: true}
+
+sources:
+  - dir: ./data
+    include: "**/*.json"        # glob 文件匹配
+    format: json
+    on_error: skip              # skip(默认) | fail
+    mapping:
+      title: "title"            # 点路径取值
+      body:  "content"
+      tags:  "keywords"         # 数组 → tags
+
+  - dir: ./wiki
+    include: "**/*.md"
+    format: frontmatter         # yaml frontmatter + 正文 (skill 格式)
+    mapping: { title: name, body: "__body__", tags: tags }
+
+  - dir: ./notes
+    include: "**/*.txt"
+    format: text                # 整文件当一个字段
+    mapping: { body: "__text__" }
+```
+
+```bash
+gs build --config index.yaml --output ./indexes/myindex \
+    --bge-weights ./model/model.safetensors --bge-vocab ./model/vocab.txt
+```
+
+| 项 | 说明 |
+|---|---|
+| 支持的格式 | `json` / `yaml` / `frontmatter`(skill) / `text` / `csv` / `xlsx` |
+| `include` | glob（支持 `**`，如 `**/*.json`、`docs/**/*.md`） |
+| `mapping` | 字段 → 点路径（`title`、`a.b[0].c`）；frontmatter/text 用 `__body__`/`__text__` 取正文 |
+| `on_error` | 解析失败策略：`skip`（默认，跳过并告警）或 `fail`（整体失败） |
+| `type` | `text` / `longtext` / `tags` |
+
+解析失败默认跳过（打日志不中断）；要严格失败就设 `on_error: fail`。`csv`/`xlsx` 每行一个文档（首行表头，`mapping` 填列名或 0 基列号）。
+
 ## 作为 Go 库使用
 
 ```go

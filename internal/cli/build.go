@@ -67,6 +67,7 @@ var (
 
 // buildOptions: build 子命令的全部 flag
 type buildOptions struct {
+	config        string
 	source        string
 	output        string
 	bgeWeights    string
@@ -76,22 +77,29 @@ type buildOptions struct {
 	maxEmbedRunes int
 }
 
-const buildUsage = `Usage: gs build <skills|wiki> [flags]
+const buildUsage = `Usage:
+  gs build <skills|wiki> [flags]
+  gs build --config <index.yaml> [flags]
 
 Build a hybrid (BM25 + BGE) index from a source tree.
 
-Arguments:
+内置模式 (skills/wiki):
   skills    Claude-style skills corpus: <source>/<user>/<skill>/SKILL.md
   wiki      wiki corpus: <source>/**/*.md (README/LICENSE/CHANGELOG skipped)
 
+配置模式 (--config): 用 YAML 声明 schema + 数据源 (dir + glob + 格式 + 字段映射),
+  支持 json / yaml / frontmatter / text / csv / xlsx 六种格式, 失败默认跳过。
+  详见 README「配置驱动索引」。
+
 Flags:
-  --source <dir>            source root directory (required)
-  --output <dir>            output index directory (required)
-  --bge-weights <file>      BGE 权重源文件 (HF model.safetensors)
-  --bge-vocab <file>        BGE 词表源文件 (HF vocab.txt; 复制进索引目录为 vocab.txt)
-  --max-embed-runes <int>   BGE 每字段编码截断的最大 rune 数 (0 = 默认 512)
-  --dry-run                 walk + extract only; skip embedding and output
-  -v                        verbose per-file logging
+  --config <file>          index config YAML (schema + sources + mapping)
+  --source <dir>           source root directory (内置模式必填)
+  --output <dir>           output index directory (required)
+  --bge-weights <file>     BGE 权重源文件 (HF model.safetensors)
+  --bge-vocab <file>       BGE 词表源文件 (HF vocab.txt; 复制进索引目录为 vocab.txt)
+  --max-embed-runes <int>  BGE 每字段编码截断的最大 rune 数 (0 = 默认 512)
+  --dry-run                walk + extract only; skip embedding and output
+  -v                       verbose per-file logging
 
   --bge-weights / --bge-vocab 只需首次构建时指定一次 (把模型"种"进
   --output); 之后构建和搜索都从索引目录按固定名 model.safetensors/vocab.txt
@@ -101,23 +109,16 @@ Flags:
 Examples:
   gs build wiki --source ./wiki --output ./indexes/wiki \
       --bge-weights ./model/model.safetensors --bge-vocab ./model/vocab.txt
-  gs build skills --source ./skills --output ./indexes/skills \
+  gs build --config index.yaml --output ./indexes/myindex \
       --bge-weights ./model/model.safetensors --bge-vocab ./model/vocab.txt
 `
 
 func runBuild(args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 {
-		return errors.New("missing argument: expected 'skills' or 'wiki' (run \"gs build -h\" for usage)")
-	}
-	switch args[0] {
-	case "-h", "--help", "help":
-		fmt.Fprint(stdout, buildUsage)
-		return nil
-	}
-	kind := indexKind(args[0])
-	if !kind.Valid() {
-		fmt.Fprintf(stderr, "gs build: unknown kind %q (want 'skills' or 'wiki')\n\n%s", args[0], buildUsage)
-		return fmt.Errorf("unknown index kind %q", args[0])
+	for _, a := range args {
+		if a == "-h" || a == "--help" || a == "help" {
+			fmt.Fprint(stdout, buildUsage)
+			return nil
+		}
 	}
 
 	fs := flag.NewFlagSet("gs build", flag.ContinueOnError)
@@ -125,15 +126,28 @@ func runBuild(args []string, stdout, stderr io.Writer) error {
 	fs.Usage = func() { fmt.Fprint(stderr, buildUsage) }
 
 	var opts buildOptions
-	fs.StringVar(&opts.source, "source", "", "source root directory (required)")
+	fs.StringVar(&opts.config, "config", "", "index config YAML (schema + sources + mapping)")
+	fs.StringVar(&opts.source, "source", "", "source root directory (required unless --config)")
 	fs.StringVar(&opts.output, "output", "", "output index directory (required)")
 	fs.StringVar(&opts.bgeWeights, "bge-weights", "", "BGE 权重源文件 (HF model.safetensors)")
 	fs.StringVar(&opts.bgeVocab, "bge-vocab", "", "BGE 词表源文件 (HF vocab.txt)")
 	fs.IntVar(&opts.maxEmbedRunes, "max-embed-runes", 0, "BGE 每字段编码截断的最大 rune 数 (0 = 默认 512)")
 	fs.BoolVar(&opts.dryRun, "dry-run", false, "walk + extract only; skip embedding and output")
 	fs.BoolVar(&opts.verbose, "v", false, "verbose per-file logging")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return err
+	}
+
+	// 配置驱动模式
+	if opts.config != "" {
+		return opts.runConfig(stderr)
+	}
+
+	// 内置 skills/wiki 模式 (兼容旧用法)
+	kind := indexKind(fs.Arg(0))
+	if !kind.Valid() {
+		fmt.Fprintf(stderr, "gs build: unknown kind %q (want 'skills' or 'wiki')\n\n%s", fs.Arg(0), buildUsage)
+		return fmt.Errorf("unknown index kind %q", fs.Arg(0))
 	}
 	if err := opts.validate(); err != nil {
 		return err
