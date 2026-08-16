@@ -24,8 +24,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/ejfkdev/gs"
+	"github.com/fsnotify/fsnotify"
 )
 
 func runWatch(args []string, stdout, stderr io.Writer) error {
@@ -105,7 +105,12 @@ func watchLoop(o *buildOptions, interval time.Duration, stderr io.Writer) error 
 	defer signal.Stop(sigCh)
 
 	trigger := make(chan struct{}, 1)
-	send := func() { select { case trigger <- struct{}{}: default: } }
+	send := func() {
+		select {
+		case trigger <- struct{}{}:
+		default:
+		}
+	}
 
 	// 轮询兜底: 每个 interval 扫一次签名 + 续心跳
 	go func() {
