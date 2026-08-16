@@ -172,9 +172,22 @@ gs watch --config index.yaml --output ./indexes/myindex \
 ```
 
 - 每次变更做全量重建，建到临时目录后一次性 `rename` 换进 `--output`。
+- **变化检测**：`fsnotify` 即时触发为主，同时按 `--interval` 轮询扫源目录签名兜底（防丢事件）。
 - 搜索进程 `Load` 时几乎总读到完整快照；正在加载的若恰好撞上交换瞬间（目录短暂缺失），CLI 搜索会自动重试几次兜底。
 - 崩溃恢复：重启时清理残留的临时/备份目录并做一次全量重建，无需状态日志。
-- 同一目录同时只允许一个 watch（用 `<output>.watch.lock` 互斥）。
+- **单 watcher 互斥**：锁文件 `<output>.watch.lock` 里记录 pid + 心跳；新 watcher 启动时若发现持有者 pid 已死（或心跳超时 30s）就抢占锁，避免 `kill` 后锁残留卡死。
+
+## 搜索进程自动重载（库）
+
+长驻的搜索进程用 `gs.OpenLive` 持有索引，它会按间隔检测索引目录变化并自动重载（重载瞬间 `Search` 短暂串行化）：
+
+```go
+eng, err := gs.OpenLive("./indexes/myindex", 5*time.Second)
+defer eng.Close()
+hits, _ := eng.Search(ctx, gs.SearchOptions{Query: "hello", TopK: 10})
+```
+
+配合 `gs watch` 的原子目录替换，两边不会冲突。
 
 ## 作为 Go 库使用
 
