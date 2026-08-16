@@ -144,6 +144,39 @@ func TestStrictTokens(t *testing.T) {
 	}
 }
 
+// TestSearchStrictNoTokens: 回归 — SearchOptions.Strict=true 且 query 没有
+// strict 格式 token (IP/域名/哈希/URL 等) 时, strictBoosts 之前返回 nil,
+// 导致 strictN[i] 越界 panic。
+func TestSearchStrictNoTokens(t *testing.T) {
+	eng := buildTestIndex(t, []Item{
+		{ID: "a.md", Path: "a.md", Fields: map[string]string{"name": "Nginx 配置", "body": "反向代理与缓存"}},
+	})
+	hits, err := eng.Search(context.Background(), SearchOptions{Query: "nginx 配置", TopK: 5, Strict: true})
+	if err != nil {
+		t.Fatalf("Search(Strict=true, no strict token): %v", err)
+	}
+	if len(hits) == 0 || hits[0].Path != "a.md" {
+		t.Fatalf("unexpected hits: %+v", hits)
+	}
+}
+
+// TestComputeStrictBoostNoTokens: strictBoosts 在无 token 时应返回 n 个 0,
+// 而不是 nil。
+func TestComputeStrictBoostNoTokens(t *testing.T) {
+	boosts, types := computeStrictBoost("普通文本 无任何特殊格式", [][]StrictField{{}}, 3)
+	if len(boosts) != 3 {
+		t.Fatalf("boosts len = %d, want 3", len(boosts))
+	}
+	for _, v := range boosts {
+		if v != 0 {
+			t.Fatalf("boosts should be all zero, got %v", boosts)
+		}
+	}
+	if types != nil {
+		t.Fatalf("types = %v, want nil", types)
+	}
+}
+
 // TestFullyCustomSchema: 完全自定义字段 (无 name/tags), 验证库不依赖任何内置字段名
 func TestFullyCustomSchema(t *testing.T) {
 	schema := &Schema{

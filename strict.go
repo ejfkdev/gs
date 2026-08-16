@@ -133,9 +133,15 @@ type StrictField struct {
 // 输入: query, items 字段文本, item 数
 // 返回: 每个 item 一个分数, 命中的 strict 类型
 func computeStrictBoost(q string, items [][]StrictField, n int) ([]float32, [][]string) {
-	tokens := ExtractStrictTokens(q)
-	if len(tokens) == 0 || n == 0 {
+	if n <= 0 {
 		return nil, nil
+	}
+	tokens := ExtractStrictTokens(q)
+	if len(tokens) == 0 {
+		// 无 strict 格式 token → 返回全 0 但长度仍为 n 的 boosts。
+		// Search 在 opts.Strict=true 时会强制启用 strict 分支; 若这里返回 nil,
+		// strictN 归一化后仍为空, 后续 strictN[i] 会越界 panic。
+		return make([]float32, n), nil
 	}
 	boosts := make([]float32, n)
 	matchedTypes := make([][]string, n)
