@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# 编译产物 (gs build 的默认输出约定与构建出的二进制)
+/bin/
+/indexes/
+/gs
+
+# 示例与演示数据 (体积大, 可再生成)
+/examples/
+
+# Go 工作区文件
+go.work
+go.work.sum
+
+# 编辑器 / 系统
+*.swp
+*.tmp

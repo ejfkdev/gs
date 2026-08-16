@@ -1,0 +1,50 @@
+name: release
+
+# 打版本 tag (v*) 时触发: 交叉编译 mac / linux / windows 的 amd64 + arm64 二进制,
+# 并作为附件上传到对应的 GitHub Release。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build & publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+
+      - name: Cross-compile all targets
+        env:
+          CGO_ENABLED: '0'
+          LDFLAGS: '-s -w'
+        run: |
+          mkdir -p dist
+          for GOOS in linux darwin windows; do
+            for GOARCH in amd64 arm64; do
+              ext=""
+              if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+              out="dist/gs-${GOOS}-${GOARCH}${ext}"
+              echo "building ${out}"
+              CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+                go build -trimpath -ldflags="${LDFLAGS}" -o "$out" ./cmd/gs
+            done
+          done
+          (cd dist && sha256sum ./* > SHA256SUMS.txt)
+          ls -l dist
+
+      - name: Upload binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true
