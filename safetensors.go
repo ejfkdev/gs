@@ -14,7 +14,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 )
@@ -58,12 +57,7 @@ func parseSafetensors(data []byte) (*BGEWeights, error) {
 		if start < 0 || end > len(body) || start > end || (end-start)%4 != 0 {
 			return nil, fmt.Errorf("safetensors: tensor %q has out-of-range offsets", name)
 		}
-		out := make([]float32, (end-start)/4)
-		b := body[start:end]
-		for i := range out {
-			out[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
-		}
-		return out, nil
+		return bytesToFloat32LE(body[start:end]), nil
 	}
 	get := func(name string) ([]float32, error) {
 		t, ok := spec[name]

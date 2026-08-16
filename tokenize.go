@@ -29,20 +29,23 @@ func tokenize(text string) []string {
 			// 双字重叠组合, 单字 token 仅当汉字孤立成词时产生。
 			// 全量 unigram 会让短文档 (title 型字段) 靠高频单字权重
 			// 挤掉真正命中的长词文档。
-			var run []rune
+			// 优化: 所有 isCJK 字符都是 3 字节 UTF-8, 直接从原文字节切片做
+			// bigram (零拼接分配), 不再收集 []rune 或 string(rune)+string(rune)。
+			start := i
+			n := 0
 			for i < len(text) {
 				r2, sz := utf8.DecodeRuneInString(text[i:])
 				if !isCJK(r2) {
 					break
 				}
-				run = append(run, r2)
 				i += sz
+				n++
 			}
-			if len(run) == 1 {
-				out = append(out, string(run[0]))
+			if n == 1 {
+				out = append(out, text[start:i])
 			} else {
-				for j := 0; j+1 < len(run); j++ {
-					out = append(out, string(run[j])+string(run[j+1]))
+				for j := 0; j+1 < n; j++ {
+					out = append(out, text[start+3*j:start+3*j+6])
 				}
 			}
 		case isWordRune(r):

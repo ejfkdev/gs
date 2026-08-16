@@ -9,7 +9,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 )
 
 // Load: 从 dataDir 加载引擎
@@ -283,11 +285,7 @@ func readEmbBin(path string) ([]float32, int, error) {
 	if 8+bodyLen > len(data) {
 		return nil, 0, fmt.Errorf("emb file truncated: %s (have %d, want %d)", path, len(data), 8+bodyLen)
 	}
-	embs := make([]float32, bodyLen/4)
-	for i := range embs {
-		bits := binary.LittleEndian.Uint32(data[8+i*4:])
-		embs[i] = math.Float32frombits(bits)
-	}
+	embs := bytesToFloat32LE(data[8 : 8+bodyLen])
 	return embs, int(dim), nil
 }
 
@@ -311,4 +309,47 @@ func firstExisting(paths ...string) string {
 		}
 	}
 	return ""
+}
+
+// bytesToFloat32LE: 把 little-endian float32 字节流解码为 []float32。
+// Load 路径里 emb_*.bin 和 safetensors 的浮点解码是纯标量循环 (约几千万
+// 次), 这里按 CPU 核数分块并行, 是加载耗时的最主要优化点。
+func bytesToFloat32LE(b []byte) []float32 {
+	n := len(b) / 4
+	out := make([]float32, n)
+	if n < 16384 { // < 64KB 就串行, 避免并发开销
+		for i := 0; i < n; i++ {
+			out[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
+		}
+		return out
+	}
+
+	workers := runtime.NumCPU()
+	if workers > n/16384 {
+		workers = n / 16384
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	chunk := (n + workers - 1) / workers
+	var wg sync.WaitGroup
+	for w := 0; w < workers; w++ {
+		start := w * chunk
+		if start >= n {
+			break
+		}
+		end := start + chunk
+		if end > n {
+			end = n
+		}
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			for i := s; i < e; i++ {
+				out[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
+			}
+		}(start, end)
+	}
+	wg.Wait()
+	return out
 }
