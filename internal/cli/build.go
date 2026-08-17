@@ -72,6 +72,7 @@ type buildOptions struct {
 	output        string
 	bgeWeights    string
 	bgeVocab      string
+	embCache      string
 	dryRun        bool
 	verbose       bool
 	maxEmbedRunes int
@@ -98,6 +99,7 @@ Flags:
   --bge-weights <file>     BGE 权重源文件 (HF model.safetensors)
   --bge-vocab <file>       BGE 词表源文件 (HF vocab.txt; 复制进索引目录为 vocab.txt)
   --max-embed-runes <int>  BGE 每字段编码截断的最大 rune 数 (0 = 默认 512)
+  --emb-cache <dir>        持久化 embedding 缓存目录 (增量重建, 只算变更文档)
   --dry-run                walk + extract only; skip embedding and output
   -v                       verbose per-file logging
 
@@ -131,6 +133,7 @@ func runBuild(args []string, stdout, stderr io.Writer) error {
 	fs.StringVar(&opts.output, "output", "", "output index directory (required)")
 	fs.StringVar(&opts.bgeWeights, "bge-weights", "", "BGE 权重源文件 (HF model.safetensors)")
 	fs.StringVar(&opts.bgeVocab, "bge-vocab", "", "BGE 词表源文件 (HF vocab.txt)")
+	fs.StringVar(&opts.embCache, "emb-cache", "", "持久化 embedding 缓存目录 (增量重建, 只算变更文档)")
 	fs.IntVar(&opts.maxEmbedRunes, "max-embed-runes", 0, "BGE 每字段编码截断的最大 rune 数 (0 = 默认 512)")
 	fs.BoolVar(&opts.dryRun, "dry-run", false, "walk + extract only; skip embedding and output")
 	fs.BoolVar(&opts.verbose, "v", false, "verbose per-file logging")

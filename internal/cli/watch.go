@@ -190,7 +190,10 @@ func (o *buildOptions) rebuildAndSwap(cfg *gs.IndexConfig, stderr io.Writer) err
 	if err := os.RemoveAll(tmp); err != nil {
 		return err
 	}
-	opts := []gs.IndexBuildOption{gs.IndexWithProgress(o.progress(stderr))}
+	opts := []gs.IndexBuildOption{
+		gs.IndexWithProgress(o.progress(stderr)),
+		gs.IndexWithEmbedCache(o.output + ".embcache"), // 增量缓存, 落在 output 旁, 跨重建/重启持久
+	}
 	if o.bgeWeights != "" {
 		opts = append(opts, gs.IndexWithBGEPaths(o.bgeWeights, o.bgeVocab))
 	}

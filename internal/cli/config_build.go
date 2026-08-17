@@ -52,6 +52,9 @@ func (o *buildOptions) runConfig(stderr io.Writer) error {
 	if !o.dryRun && o.bgeWeights != "" {
 		opts = append(opts, gs.IndexWithBGEPaths(o.bgeWeights, o.bgeVocab))
 	}
+	if o.embCache != "" {
+		opts = append(opts, gs.IndexWithEmbedCache(o.embCache))
+	}
 
 	t0 := time.Now()
 	var stats gs.IndexBuildStats

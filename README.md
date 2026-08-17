@@ -169,10 +169,13 @@ import "github.com/ejfkdev/gs"
 cfg, _ := gs.LoadIndexConfig("index.yaml")
 stats, err := cfg.Build("./indexes/myindex",
     gs.IndexWithBGEPaths("./model/model.safetensors", "./model/vocab.txt"),
+    gs.IndexWithEmbedCache("./indexes/.embcache"), // 增量缓存: 次次只算变更文档
     gs.IndexWithProgress(func(stage string, cur, total int) { fmt.Printf("%s %d/%d\n", stage, cur, total) }),
 )
 // stats.Items / stats.Skipped
 ```
+
+CLI 等价用 `gs build --config index.yaml --emb-cache ./indexes/.embcache ...`。增量缓存按「字段内容哈希」复用向量，新增/删除/改动单个文档只重算变化的部分（缓存会顺带清掉已删文档的孤儿条目）。
 
 ## 监控目录增量索引（gs watch）
 
@@ -185,6 +188,7 @@ gs watch --config index.yaml --output ./indexes/myindex \
 ```
 
 - 每次变更做全量重建，建到临时目录后一次性 `rename` 换进 `--output`。
+- **增量 embedding 缓存**：`gs watch` 自动在 `<output>.embcache` 维护按内容哈希的向量缓存，新增/修改文档只重算变化的部分，不是每次都从头编码。
 - **变化检测**：`fsnotify` 即时触发为主，同时按 `--interval` 轮询扫源目录签名兜底（防丢事件）。
 - 搜索进程 `Load` 时几乎总读到完整快照；正在加载的若恰好撞上交换瞬间（目录短暂缺失），CLI 搜索会自动重试几次兜底。
 - 崩溃恢复：重启时清理残留的临时/备份目录并做一次全量重建，无需状态日志。

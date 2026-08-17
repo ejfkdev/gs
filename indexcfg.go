@@ -138,11 +138,12 @@ func (f *FieldConfig) Field() (Field, error) {
 // ------------------------------------------------------------------ 构建选项
 
 type indexBuildOptions struct {
-	bgeWeights string
-	bgeVocab   string
-	workers    int
-	progress   func(stage string, cur, total int)
-	onError    func(path string, err error)
+	bgeWeights  string
+	bgeVocab    string
+	workers     int
+	embCacheDir string
+	progress    func(stage string, cur, total int)
+	onError     func(path string, err error)
 }
 
 // IndexBuildOption: 配置驱动的构建选项
@@ -159,6 +160,11 @@ func IndexWithBGEPaths(weightsPath, vocabPath string) IndexBuildOption {
 // IndexWithWorkers: BGE 编码并行度
 func IndexWithWorkers(n int) IndexBuildOption {
 	return func(o *indexBuildOptions) { o.workers = n }
+}
+
+// IndexWithEmbedCache: 设置持久化 embedding 缓存目录 (增量重建, 只算变更文档)
+func IndexWithEmbedCache(cacheDir string) IndexBuildOption {
+	return func(o *indexBuildOptions) { o.embCacheDir = cacheDir }
 }
 
 // IndexWithProgress: 构建进度回调
@@ -188,6 +194,9 @@ func (c *IndexConfig) Build(outputDir string, opts ...IndexBuildOption) (IndexBu
 	}
 	if ib.workers > 0 {
 		builderOpts = append(builderOpts, WithWorkers(ib.workers))
+	}
+	if ib.embCacheDir != "" {
+		builderOpts = append(builderOpts, WithEmbedCache(ib.embCacheDir))
 	}
 	builder, err := NewBuilder(schema, outputDir, builderOpts...)
 	if err != nil {

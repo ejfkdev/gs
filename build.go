@@ -46,6 +46,9 @@ type Builder struct {
 	// 并行度 (默认 runtime.NumCPU())
 	workers int
 
+	// 持久化 embedding 缓存目录 (可选; 非空时按字段内容哈希复用向量)
+	embCacheDir string
+
 	// 收集的 items
 	items []*internalBuildItem
 
@@ -78,6 +81,15 @@ func WithWorkers(n int) BuilderOption {
 			n = 1
 		}
 		b.workers = n
+	}
+}
+
+// WithEmbedCache: 设置持久化 embedding 缓存目录。非空时按「字段内容哈希」复用
+// 向量, 新增/删除/改动文档时只重算变化的部分 (缓存落在 cacheDir, 应比索引目录
+// 更持久, 例如 watch 场景放到 output 旁的 .embcache)。
+func WithEmbedCache(cacheDir string) BuilderOption {
+	return func(b *Builder) {
+		b.embCacheDir = cacheDir
 	}
 }
 
@@ -300,47 +312,22 @@ func (b *Builder) Build() error {
 	}
 	b.progress("items.bin", 1, 1)
 
-	// 3. BGE embedding (并行单条; 每个 item 跑自己的序列长度, 无 batch padding)
+	// 3. BGE embedding (并行单条 + 可选内容哈希缓存增量)
 	if needEmb && b.bge != nil {
-		workers := b.workerCount()
-
 		for fi, f := range b.schema.Fields {
 			if !f.Embeddable {
 				continue
 			}
 			embPath := filepath.Join(b.dataDir, fmt.Sprintf("emb_%s.bin", f.Name))
-			if canReuseEmbedding(embPath, n, embDim) {
+			// 无缓存时: 整文件大小/header 对上才复用 (N 不变); 有缓存时交给内容哈希复用
+			if b.embCacheDir == "" && canReuseEmbedding(embPath, n, embDim) {
 				b.progress("embed_"+f.Name, n, n)
 				continue
 			}
 
 			emb := make([]float32, n*embDim)
-			b.progress("embed_"+f.Name, 0, n)
-			var done int64
-			var wg sync.WaitGroup
-			workCh := make(chan int, workers*2)
-			for w := 0; w < workers; w++ {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					for i := range workCh {
-						vec := b.bge.EmbedFresh(b.items[i].Fields[fi])
-						copy(emb[i*embDim:(i+1)*embDim], vec)
-						if atomic.AddInt64(&done, 1)%200 == 0 {
-							b.progress("embed_"+f.Name, int(atomic.LoadInt64(&done)), n)
-						}
-					}
-				}()
-			}
-			for i := 0; i < n; i++ {
-				workCh <- i
-			}
-			close(workCh)
-			wg.Wait()
-			b.progress("embed_"+f.Name, n, n)
-
-			if err := writeEmbBin(embPath, emb, n, embDim); err != nil {
-				return fmt.Errorf("write emb_%s.bin: %w", f.Name, err)
+			if err := b.embedField(fi, emb, embPath, embDim); err != nil {
+				return err
 			}
 		}
 	}
@@ -369,6 +356,86 @@ func (b *Builder) progress(stage string, cur, total int) {
 	if b.OnProgress != nil {
 		b.OnProgress(stage, cur, total)
 	}
+}
+
+// embedField: 计算字段 fi 的 embedding 到 emb (n*dim), 写 embPath。
+// 若启用 embCacheDir, 先按「字段内容哈希」命中缓存, 只并行编码 miss 的文档,
+// 并把当前语料的所有哈希/向量写回缓存 (顺带清掉已删除文档的孤儿条目)。
+func (b *Builder) embedField(fi int, emb []float32, embPath string, embDim int) error {
+	name := b.schema.Fields[fi].Name
+	n := len(b.items)
+	workers := b.workerCount()
+
+	// 实际截断长度以 bge 为准 (决定 embedding 输入, 也决定缓存 key)
+	maxRunes := DefaultMaxEmbedRunes
+	if b.bge != nil {
+		maxRunes = b.bge.maxRunes
+	}
+
+	var cachePath string
+	var cache map[uint64][]float32
+	if b.embCacheDir != "" {
+		cachePath = filepath.Join(b.embCacheDir, fmt.Sprintf("emb_%s.cache", name))
+		c, err := loadEmbCache(cachePath, embDim)
+		if err != nil {
+			c = map[uint64][]float32{} // 缓存文件损坏 → 当空, 全量重算
+		}
+		cache = c
+	}
+
+	// 命中缓存, 收集未命中
+	hashes := make([]uint64, n)
+	missing := make([]int, 0, n)
+	for i, it := range b.items {
+		hashes[i] = hashTerm(truncateRunes(it.Fields[fi], maxRunes))
+		if cache != nil {
+			if v, ok := cache[hashes[i]]; ok && len(v) == embDim {
+				copy(emb[i*embDim:(i+1)*embDim], v)
+				continue
+			}
+		}
+		missing = append(missing, i)
+	}
+
+	if len(missing) > 0 {
+		b.progress("embed_"+name, 0, n)
+		var done int64
+		var wg sync.WaitGroup
+		workCh := make(chan int, workers*2)
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range workCh {
+					vec := b.bge.EmbedFresh(b.items[i].Fields[fi])
+					copy(emb[i*embDim:(i+1)*embDim], vec)
+					if atomic.AddInt64(&done, 1)%200 == 0 {
+						b.progress("embed_"+name, int(atomic.LoadInt64(&done)), n)
+					}
+				}
+			}()
+		}
+		for _, i := range missing {
+			workCh <- i
+		}
+		close(workCh)
+		wg.Wait()
+	}
+	b.progress("embed_"+name, n, n)
+
+	if err := writeEmbBin(embPath, emb, n, embDim); err != nil {
+		return fmt.Errorf("write emb_%s.bin: %w", name, err)
+	}
+
+	// 回写缓存: 只含当前语料的哈希 (孤儿自动清除)。失败不致命 (索引已正确写盘)。
+	if cachePath != "" {
+		nc := make(map[uint64][]float32, n)
+		for i := 0; i < n; i++ {
+			nc[hashes[i]] = append([]float32(nil), emb[i*embDim:(i+1)*embDim]...)
+		}
+		_ = saveEmbCache(cachePath, embDim, nc)
+	}
+	return nil
 }
 
 // writeItemsBin: 写 items.bin
