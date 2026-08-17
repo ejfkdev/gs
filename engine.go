@@ -660,14 +660,15 @@ func (e *Engine) strictFieldsForItem() [][]StrictField {
 				Weight: 0.15,
 			})
 		}
-		// 总是包含 path (中权重)
+		// path 不是 schema 字段, 始终参与 strict (中权重)
 		fields = append(fields, StrictField{
 			Name:   "path",
 			Text:   e.pathText(i),
 			Weight: 0.25,
 		})
-		// name 字段 (强)
-		if nameIdx >= 0 {
+		// name 字段 (强): 仅在 schema 没有把 name 标成 Strict 时才额外补一次,
+		// 避免 name 被 f.Strict 循环和这里双重计权。
+		if nameIdx >= 0 && !e.schema.Fields[nameIdx].Strict {
 			fields = append(fields, StrictField{
 				Name:   "name",
 				Text:   e.fieldText(i, nameIdx),
@@ -789,18 +790,28 @@ func searchCacheKey(opts SearchOptions) string {
 	sb.WriteString(strings.ToLower(opts.Query))
 	sb.WriteByte('|')
 	sb.WriteString(strconv.Itoa(opts.TopK))
-	sb.WriteString(",")
+	sb.WriteByte(',')
 	sb.WriteString(strconv.Itoa(opts.RerankTop))
 	sb.WriteString("|f:")
 	sb.WriteString(strings.Join(opts.Fields, ","))
 	sb.WriteString("|strict:")
 	sb.WriteString(strconv.FormatBool(opts.Strict))
+	// 所有可调权重都进 key, 避免改权重后命中旧缓存
+	w := func(v float32) string { return strconv.FormatFloat(float64(v), 'f', 2, 32) }
 	sb.WriteString("|w:")
-	sb.WriteString(strconv.FormatFloat(float64(opts.WBM25), 'f', 2, 32))
+	sb.WriteString(w(opts.WBM25))
 	sb.WriteByte(',')
-	sb.WriteString(strconv.FormatFloat(float64(opts.WEmb), 'f', 2, 32))
+	sb.WriteString(w(opts.WEmb))
 	sb.WriteByte(',')
-	sb.WriteString(strconv.FormatFloat(float64(opts.WPhrase), 'f', 2, 32))
+	sb.WriteString(w(opts.WPhrase))
+	sb.WriteByte(',')
+	sb.WriteString(w(opts.WExact))
+	sb.WriteByte(',')
+	sb.WriteString(w(opts.WPrefix))
+	sb.WriteByte(',')
+	sb.WriteString(w(opts.WStrict))
+	sb.WriteByte(',')
+	sb.WriteString(w(opts.RerankW))
 	return sb.String()
 }
 

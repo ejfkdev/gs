@@ -1,9 +1,12 @@
 // live.go - 自动重载的 Engine 包装
 //
 // 长驻的搜索进程用 LiveEngine 持有索引: 它周期性检测索引目录变化 (items.bin
-// 的 mtime), 变化时加载新 Engine 并原子换入, 换入期间 Search 会被 RWMutex
-// 短暂串行化 (符合"更新期间可能短暂不可服务"的预期)。配合 gs watch 的原子
-// 目录替换, 碰撞窗口极小, 加载时还会对"目录短暂缺失"做重试。
+// 的 mtime), 变化时加载新 Engine 并原子换入。
+//
+// 并发约定: Search 全程持读锁, 重载持写锁换新引擎并关闭旧引擎。这样:
+//   - 进行中的搜索不会被「换新 + 关旧」打断;
+//   - 重载会等所有在途搜索结束后才换入 (即"更新期间短暂不可服务")。
+// 注意: 不要长持某个 *Engine 指针 (没有公开 getter, 正是为了避免引用失效)。
 
 package gs
 
@@ -17,13 +20,14 @@ import (
 
 // LiveEngine: 持有 *Engine 并在后台自动重载
 type LiveEngine struct {
-	mu       sync.RWMutex
-	eng      *Engine
-	dir      string
-	modTime  time.Time
-	interval time.Duration
-	stop     chan struct{}
-	done     chan struct{}
+	mu        sync.RWMutex
+	eng       *Engine
+	dir       string
+	modTime   time.Time
+	interval  time.Duration
+	stop      chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 // OpenLive: 加载 dir 并开启自动重载 (每 interval 检查一次; interval<=0 用 5s)
@@ -49,29 +53,26 @@ func OpenLive(dir string, interval time.Duration) (*LiveEngine, error) {
 	return l, nil
 }
 
-// Search: 线程安全地搜索 (重载瞬间可能短暂阻塞在写锁上)
+// Search: 线程安全地搜索。全程持读锁, 直到此次搜索完成才释放, 因此后台重载
+// 不会把还在用的引擎关掉。
 func (l *LiveEngine) Search(ctx context.Context, opts SearchOptions) ([]Hit, error) {
 	l.mu.RLock()
-	e := l.eng
-	l.mu.RUnlock()
-	return e.Search(ctx, opts)
-}
-
-// Engine: 返回当前引擎 (只读; 可能被后台重载替换, 不应长期持有)
-func (l *LiveEngine) Engine() *Engine {
-	l.mu.RLock()
 	defer l.mu.RUnlock()
-	return l.eng
+	return l.eng.Search(ctx, opts)
 }
 
-// Close: 停止重载并关闭当前引擎
+// Close: 停止重载并关闭当前引擎。可安全重入。
 func (l *LiveEngine) Close() error {
-	close(l.stop)
-	<-l.done
-	l.mu.Lock()
-	e := l.eng
-	l.mu.Unlock()
-	return e.Close()
+	var err error
+	l.closeOnce.Do(func() {
+		close(l.stop)
+		<-l.done
+		l.mu.Lock()
+		e := l.eng
+		l.mu.Unlock()
+		err = e.Close()
+	})
+	return err
 }
 
 func (l *LiveEngine) loop() {
@@ -91,6 +92,7 @@ func (l *LiveEngine) loop() {
 			if err != nil {
 				continue
 			}
+			// 写锁换入新引擎; 旧引擎在锁外关闭, 不阻塞在途搜索 (它们持有读锁)
 			l.mu.Lock()
 			old := l.eng
 			l.eng = eng

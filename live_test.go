@@ -52,3 +52,19 @@ func TestLiveEngineReload(t *testing.T) {
 		t.Fatalf("after reload search = %+v, want Beta", hits)
 	}
 }
+
+// TestLiveEngineCloseIdempotent: Close 可安全重入 (sync.Once 保证, 不应二次 close channel panic)
+func TestLiveEngineCloseIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	buildTo(t, dir, "Alpha")
+	l, err := OpenLive(dir, time.Second)
+	if err != nil {
+		t.Fatalf("OpenLive: %v", err)
+	}
+	if err := l.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := l.Close(); err != nil { // 二次关闭应安全
+		t.Fatalf("second Close: %v", err)
+	}
+}

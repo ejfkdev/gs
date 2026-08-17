@@ -3,6 +3,9 @@
 // 以「字段内容哈希」为 key 存每个字段的向量, 让重建只算新增/变更的文档。
 // 与按位置(下标)复用的 emb_<field>.bin 不同, 哈希 key 与文档顺序/增删无关,
 // 所以新增、删除、改动单个文档都不会让其余文档失效。
+//
+// 代价: 缓存磁盘占用 ≈ embedding 本身 (每个字段一份 .cache)。不需要增量时
+// 不传 WithEmbedCache / IndexWithEmbedCache / --emb-cache。
 
 package gs
 
