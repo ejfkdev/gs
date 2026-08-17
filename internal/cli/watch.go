@@ -79,20 +79,18 @@ func watchLoop(o *buildOptions, interval time.Duration, stderr io.Writer) error 
 	}
 	defer releaseWatchLock(o.output, lock)
 
-	cfg, err := LoadConfig(o.config)
+	cfg, err := gs.LoadIndexConfig(o.config)
 	if err != nil {
 		return err
 	}
-	schema, err := cfg.Schema.Schema()
-	if err != nil {
-		return fmt.Errorf("schema: %w", err)
+	if o.maxEmbedRunes > 0 {
+		cfg.Schema.MaxEmbedRunes = o.maxEmbedRunes
 	}
-	o.applyMaxEmbedRunes(schema)
 
 	if err := cleanupStale(o.output); err != nil {
 		return err
 	}
-	if err := o.rebuildAndSwap(cfg, schema, stderr); err != nil {
+	if err := o.rebuildAndSwap(cfg, stderr); err != nil {
 		return fmt.Errorf("initial build: %w", err)
 	}
 	sig, err := scanSignature(cfg)
@@ -177,7 +175,7 @@ func watchLoop(o *buildOptions, interval time.Duration, stderr io.Writer) error 
 				continue
 			}
 			fmt.Fprintln(stderr, "[watch] source changed, rebuilding...")
-			if err := o.rebuildAndSwap(cfg, schema, stderr); err != nil {
+			if err := o.rebuildAndSwap(cfg, stderr); err != nil {
 				fmt.Fprintf(stderr, "[watch] rebuild failed: %v (will retry)\n", err)
 				continue
 			}
@@ -187,12 +185,16 @@ func watchLoop(o *buildOptions, interval time.Duration, stderr io.Writer) error 
 }
 
 // rebuildAndSwap: 建到临时目录 → 原子替换到 output
-func (o *buildOptions) rebuildAndSwap(cfg *Config, schema *gs.Schema, stderr io.Writer) error {
+func (o *buildOptions) rebuildAndSwap(cfg *gs.IndexConfig, stderr io.Writer) error {
 	tmp := o.output + ".tmp"
 	if err := os.RemoveAll(tmp); err != nil {
 		return err
 	}
-	if _, err := o.buildConfigTo(cfg, schema, tmp, stderr); err != nil {
+	opts := []gs.IndexBuildOption{gs.IndexWithProgress(o.progress(stderr))}
+	if o.bgeWeights != "" {
+		opts = append(opts, gs.IndexWithBGEPaths(o.bgeWeights, o.bgeVocab))
+	}
+	if _, err := cfg.Build(tmp, opts...); err != nil {
 		return err
 	}
 	if err := atomicSwapDir(tmp, o.output); err != nil {
@@ -237,7 +239,7 @@ type fileSig struct {
 }
 
 // scanSignature: 所有匹配文件的 (size, mtime) 快照, key = dir + "/" + rel
-func scanSignature(cfg *Config) (map[string]fileSig, error) {
+func scanSignature(cfg *gs.IndexConfig) (map[string]fileSig, error) {
 	sig := map[string]fileSig{}
 	for _, src := range cfg.Sources {
 		include := src.Include
@@ -252,7 +254,7 @@ func scanSignature(cfg *Config) (map[string]fileSig, error) {
 			if err != nil {
 				rel = p
 			}
-			if !matchGlob(include, filepath.ToSlash(rel)) {
+			if !gs.MatchGlob(include, filepath.ToSlash(rel)) {
 				return nil
 			}
 			info, err := d.Info()

@@ -161,6 +161,19 @@ gs build --config index.yaml --output ./indexes/myindex \
 
 解析失败默认跳过（打日志不中断）；要严格失败就设 `on_error: fail`。`csv`/`xlsx`/`ndjson` 每行/每条一个文档（`csv`/`xlsx` 首行表头，`mapping` 填列名或 0 基列号；`ndjson` 每行一个 JSON 对象）。
 
+配置驱动索引**也是公开库 API**，可以在自己的程序里直接构建：
+
+```go
+import "github.com/ejfkdev/gs"
+
+cfg, _ := gs.LoadIndexConfig("index.yaml")
+stats, err := cfg.Build("./indexes/myindex",
+    gs.IndexWithBGEPaths("./model/model.safetensors", "./model/vocab.txt"),
+    gs.IndexWithProgress(func(stage string, cur, total int) { fmt.Printf("%s %d/%d\n", stage, cur, total) }),
+)
+// stats.Items / stats.Skipped
+```
+
 ## 监控目录增量索引（gs watch）
 
 `gs watch` 监听源目录，变化后自动重建，并用**原子替换**发布索引——搜索进程可以无锁并发读、不受更新影响：
