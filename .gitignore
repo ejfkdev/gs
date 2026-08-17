@@ -6,8 +6,8 @@
 /indexes/
 /gs
 
-# 示例与演示数据 (体积大, 可再生成)
-/examples/
+# 示例与演示数据 (体积大, 可再生成); 示例代码本身照常入库
+/examples/indexes/
 
 # Go 工作区文件
 go.work

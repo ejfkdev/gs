@@ -254,7 +254,12 @@ defer reg.CloseAll()
 reg.Release(wiki); reg.Release(wiki2)       // 引用归零时自动关闭该实例
 ```
 
-完整可运行示例：[examples/custom_indexer/main.go](examples/custom_indexer/main.go)（`go run ./examples/custom_indexer`，无需任何外部文件。注意 `examples/` 在 .gitignore 中，克隆后如需要请自行取出或放开）。
+完整可运行示例：
+
+- [examples/custom_indexer](examples/custom_indexer/) —— 用 `Builder` + `Add` 手工建索引（`go run ./examples/custom_indexer`）
+- [examples/embedded_indexer](examples/embedded_indexer/) —— 声明式配置建索引 + `OpenLive` 自动重载 + 持续搜索（`go run ./examples/embedded_indexer`）
+
+均无需外部文件即可跑通。
 
 ## Schema：随索引落盘、自动读取
 
@@ -294,9 +299,10 @@ gs/
 ├── cmd/gs/main.go              # CLI 入口 (单二进制)
 ├── internal/cli/               # CLI 实现 (root dispatch + build + search + help)
 │   ├── cli.go
-│   ├── build.go                # gs build (skills/wiki extractor)
-│   └── search.go               # gs search (JSON/human 输出, 3 种模式)
-├── examples/custom_indexer/    # 库用法示例 (自包含, 可直接 go run)
+│   ├── build.go                # gs build (skills/wiki 或 --config)
+│   ├── search.go               # gs search (JSON/human 输出)
+│   └── watch.go                # gs watch (fsnotify + 轮询, 原子替换)
+├── examples/                   # 可运行示例 (custom_indexer / embedded_indexer)
 ├── *.go                        # gs 库本身 (import "github.com/ejfkdev/gs")
 │   ├── types.go / schema.go    # 数据类型 + Schema
 │   ├── engine.go               # BM25 + BGE + phrase + strict + rerank 主流程
