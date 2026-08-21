@@ -7,36 +7,54 @@ import (
 	"flag"
 	"fmt"
 	"io"
+
+	"github.com/ejfkdev/gs/internal/xyzsvc"
+	"github.com/ejfkdev/xyz-go"
 )
 
 // Version: 与 cmd/gs 二进制对应的版本号
-const Version = "0.2.2"
+const Version = "0.3.0"
 
 const rootUsage = `gs — hybrid (BM25 + BGE) full-text search for local knowledge bases.
 
 Usage:
   gs <command> [arguments] [flags]
 
-Commands:
-  build     Build a hybrid (BM25 + BGE) index from a source tree
+Commands (defined once, callable from CLI / HTTP / MCP):
   search    Query a prebuilt index
+  schema    Show an index's schema (fields and types)
+  index     Rebuild an index from a config YAML
+  serve     Start the HTTP service (REST + /openapi.json + /mcp)
+  mcp       Start an MCP tool server (stdio|sse|http)
+
+Local build / daemon commands:
+  build     Build an index from a source tree (skills/wiki/config)
   watch     Watch source dirs and rebuild on change (atomic swap)
-  version   Print version information
+
+  -v        Print version information
 
 Run "gs <command> -h" for command-specific help.
 `
 
-// Run: 执行 root 命令, 返回进程退出码 (0 成功, 1 运行错误, 2 用法错误)
+// Run: 执行 root 命令, 返回进程退出码 (0 成功, 1 运行错误, 2 用法错误)。
+//
+// search/schema/index/serve/mcp/help 由 xyz-go 统一派发 (一份定义, 三通道);
+// build/watch/version 是 gs 特有的长驻/遗留子命令, 在这里预派发回本地实现。
 func Run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprint(stderr, rootUsage)
+	reg, err := xyzsvc.Registry()
+	if err != nil {
+		fmt.Fprintf(stderr, "gs: %v\n", err)
 		return 2
+	}
+	if len(args) == 0 {
+		fmt.Fprint(stdout, rootUsage)
+		return 0
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
 		fmt.Fprint(stdout, rootUsage)
 		return 0
-	case "version", "--version", "-V":
+	case "version", "--version", "-V", "-v":
 		fmt.Fprintf(stdout, "gs %s (github.com/ejfkdev/gs)\n", Version)
 		return 0
 	case "build":
@@ -44,20 +62,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 			return printErr(stderr, "gs build", err)
 		}
 		return 0
-	case "search":
-		if err := runSearch(args[1:], stdout, stderr); err != nil {
-			return printErr(stderr, "gs search", err)
-		}
-		return 0
 	case "watch":
 		if err := runWatch(args[1:], stdout, stderr); err != nil {
 			return printErr(stderr, "gs watch", err)
 		}
 		return 0
-	default:
-		fmt.Fprintf(stderr, "gs: unknown command %q\n\n%s", args[0], rootUsage)
-		return 2
 	}
+	return xyz.Run(reg, args)
 }
 
 // printErr: 统一错误输出; -h 触发的 flag.ErrHelp 视为正常退出。

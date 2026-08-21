@@ -16,3 +16,6 @@ go.work.sum
 # 编辑器 / 系统
 *.swp
 *.tmp
+
+# ZCode 本地状态 (计划/会话记录)
+.zcode/

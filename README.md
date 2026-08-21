@@ -5,10 +5,11 @@
 `gs` 把本地的一堆 markdown / YAML 文档（wiki、笔记、Skills 语料、任意自定义 corpus）建成可搜索的 hybrid 索引，离线查询，毫秒级返回。项目同时提供 **库**（`import "github.com/ejfkdev/gs"`，包名 `gs`）和 **CLI**（单二进制 `gs`）。
 
 ```
-$ gs search --index ./indexes/wiki -q "nginx 配置" -k 3
-1. [wiki] 0.952  Nginx 反向代理配置
-2. [wiki] 0.871  Nginx 静态资源缓存
-3. [wiki] 0.803  Web 服务器搭建笔记
+$ gs search --index ./indexes/wiki "nginx 配置" -k 3
+# 结果按相关度排序（加 --json 得到 JSON）
+
+$ gs serve --addr :8080   # HTTP: GET /search /schema, POST /index, /openapi.json
+$ gs mcp stdio            # MCP: search/schema/index 三个工具
 ```
 
 ## 特性
@@ -23,6 +24,7 @@ $ gs search --index ./indexes/wiki -q "nginx 配置" -k 3
 | **纯 Go** | 分词器为无词典 bigram 实现；BGE forward pass 用 blas32 sgemm 批量加速；**零 cgo**，`CGO_ENABLED=0` 亦可交叉编译 |
 | **跨平台** | 数据库格式 little-endian + IEEE 754 + UTF-8，macOS / Linux 互拷即用 |
 | **增量 build** | 已有 `emb_*.bin` 跳过，重 build 只算缺失的 field |
+| **一次定义，三通道** | search/schema/index 用 [xyz-go](https://github.com/ejfkdev/xyz-go) 定义一次，同时作为 CLI 子命令、HTTP REST（含 OpenAPI）与 MCP 工具提供 |
 
 ## 安装
 
@@ -80,30 +82,59 @@ gs build skills \
 
 首次构建会编码全部字段；后续重跑会增量跳过已存在的 `emb_*.bin`。BGE 语义向量默认取每个字段前 **512 个 rune**（模型 512 token 上限），可用 `--max-embed-runes <n>` 调整（英文长文可调大到 2048，tokenizer 会自己封顶）。
 
-### 3. 搜索
+### 3. 搜索 / 查看 schema
+
+`search`、`schema`、`index` 三个命令都是「一次定义、三通道调用」：既能当 CLI 子命令，也能通过 HTTP REST 和 MCP 工具调用（见下面的 `serve` / `mcp`）。
 
 ```bash
-# 基础查询
-gs search --index ./indexes/wiki -q "nginx 配置" -k 5
+# 基础查询 (query 用位置参数; -k/--k 为 top-K)
+gs search --index ./indexes/wiki "nginx 配置" -k 5
 
-# 位置参数 / strict 模式 (IP、域名、哈希等固定格式精确加权)
-gs search --index ./indexes/wiki "database backup" --strict
+# JSON 输出 (默认是人读表格, --json 得到 JSON; HTTP/MCP 返回的就是这种 JSON)
+gs search --index ./indexes/wiki "database backup" --json | jq .
 
-# 限定字段
-gs search --index ./indexes/wiki --fields name,description -q "golang 并发" -k 3
+# 限定搜索字段 (可重复: --fields name --fields description)
+gs search --index ./indexes/wiki "192.168.1.1" --fields name --strict
 
-# 人读输出 / JSON (默认)
-gs search --index ./indexes/wiki -q "markdown" -k 3 -human
-gs search --index ./indexes/wiki -q "markdown" -k 3 | jq .
-
-# 查看 schema
-gs search --index ./indexes/wiki --list-schema -human
-
-# 把整个文件当 query 的快速 BM25 搜索
-gs search --index ./indexes/wiki --doc /path/to/long_text.txt
+# 查看 schema (字段定义)
+gs schema ./indexes/wiki
+gs schema ./indexes/wiki --json
 ```
 
-### 4. 跨平台传输索引
+### 4. HTTP 服务（gs serve）
+
+```bash
+gs serve --addr :8080
+```
+
+| 路由 | 说明 |
+|---|---|
+| `GET  /search?index=DIR&query=...&k=10` | 搜索索引 |
+| `GET  /schema?index=DIR` | 查看索引 schema |
+| `POST /index` | 重建索引（JSON body: `config`/`output`/`bge_weights`/`bge_vocab`/`max_embed_runes`/`emb_cache`） |
+| `GET  /openapi.json` | OpenAPI 3 文档 |
+| `GET  /healthz` | 健康检查 |
+| `POST /mcp` | MCP streamable HTTP 工具端点（同一端口） |
+
+```bash
+curl 'localhost:8080/search?index=./indexes/wiki&query=nginx&k=3'
+curl 'localhost:8080/schema?index=./indexes/wiki'
+curl -s localhost:8080/openapi.json | jq .
+```
+
+`serve` 背后是 `gs.OpenLive` 自动重载：配合 `gs watch`，索引更新后无需重启服务。
+
+### 5. MCP 工具服务（gs mcp）
+
+```bash
+gs mcp stdio          # 本地 stdio (最常见)
+gs mcp sse --addr :8080
+gs mcp http --addr :8080
+```
+
+`search` / `schema` / `index` 自动成为 MCP 工具，输入/输出 schema 与 REST 同源。给 MCP 客户端（如 Claude、Cursor、Cherry Studio 等）配置 `gs mcp stdio` 即可直接检索本地知识库。
+
+### 6. 跨平台传输索引
 
 索引文件全部 little-endian，跨平台直接拷贝：
 
@@ -190,7 +221,7 @@ gs watch --config index.yaml --output ./indexes/myindex \
 - 每次变更做全量重建，建到临时目录后一次性 `rename` 换进 `--output`。
 - **增量 embedding 缓存**：`gs watch` 自动在 `<output>.embcache` 维护按内容哈希的向量缓存，新增/修改文档只重算变化的部分，不是每次都从头编码。
 - **变化检测**：`fsnotify` 即时触发为主，同时按 `--interval` 轮询扫源目录签名兜底（防丢事件）。
-- 搜索进程 `Load` 时几乎总读到完整快照；正在加载的若恰好撞上交换瞬间（目录短暂缺失），CLI 搜索会自动重试几次兜底。
+- 搜索进程 `Load`/`OpenLive` 时几乎总读到完整快照；自动重载对「目录短暂缺失」会做几次短重试兜底。
 - 崩溃恢复：重启时清理残留的临时/备份目录并做一次全量重建，无需状态日志。
 - **单 watcher 互斥**：锁文件 `<output>.watch.lock` 里记录 pid + 心跳；新 watcher 启动时若发现持有者 pid 已死（或心跳超时 30s）就抢占锁，避免 `kill` 后锁残留卡死。
 
@@ -301,11 +332,11 @@ b.Add(gs.Item{
 ```
 gs/
 ├── cmd/gs/main.go              # CLI 入口 (单二进制)
-├── internal/cli/               # CLI 实现 (root dispatch + build + search + help)
-│   ├── cli.go
+├── internal/cli/               # gs 本地子命令 (build/watch/version) + root 派发
+│   ├── cli.go                  # root dispatch (build/watch/version) + 转交 xyz-go
 │   ├── build.go                # gs build (skills/wiki 或 --config)
-│   ├── search.go               # gs search (JSON/human 输出)
 │   └── watch.go                # gs watch (fsnotify + 轮询, 原子替换)
+├── internal/xyzsvc/            # xyz-go 命令定义 (search/schema/index) + 引擎缓存
 ├── examples/                   # 可运行示例 (custom_indexer / embedded_indexer)
 ├── *.go                        # gs 库本身 (import "github.com/ejfkdev/gs")
 │   ├── types.go / schema.go    # 数据类型 + Schema

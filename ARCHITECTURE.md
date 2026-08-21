@@ -14,11 +14,12 @@
 
 ```
 gs/                                     # module: github.com/ejfkdev/gs
-├── cmd/gs/main.go                      # CLI 入口 (单二进制: build / search / version)
-├── internal/cli/                       # CLI 实现
-│   ├── cli.go                          # root dispatch + help + 版本
+├── cmd/gs/main.go                      # CLI 入口 (单二进制; search/schema/index/serve/mcp + build/watch/version)
+├── internal/cli/                       # gs 本地子命令 + root 派发
+│   ├── cli.go                          # root dispatch (build/watch/version) + 转交 xyz-go
 │   ├── build.go                        # gs build (skills/wiki extractor + walk)
-│   └── search.go                       # gs search (JSON/human 输出)
+│   └── watch.go                        # gs watch (fsnotify + 轮询, 原子替换)
+├── internal/xyzsvc/                    # xyz-go 命令定义 (search/schema/index) + 引擎缓存
 ├── *.go                                # gs 库 (package gs, import "github.com/ejfkdev/gs")
 │   ├── types.go                        # Field / Item / Hit / SearchOptions
 │   ├── schema.go                       # Schema (无内置 schema, 随索引落盘为 schema.json)
