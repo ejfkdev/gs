@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ejfkdev/gs/internal/xyzsvc"
+	"github.com/ejfkdev/gs/cmd/gs/internal/xyzsvc"
 	"github.com/ejfkdev/xyz-go"
 )
 

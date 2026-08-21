@@ -62,6 +62,18 @@ func Registry() (*registry.Registry, error) {
 				Register(r)
 			return err
 		}},
+		{name: "fastsearch", reg: func(r *registry.Registry) error {
+			_, err := spec.Define("fastsearch", fastSearchHandler).
+				Summary("快速搜索（纯 BM25，文本作 query）").
+				Description("把一整段文本当作查询做纯 BM25 检索，不跑 BGE，毫秒级返回。对应旧 CLI 的 --doc 能力。").
+				CLI(spec.CliHints{Fields: map[string]spec.CliFieldHint{
+					"k": {Shorthand: "k"},
+				}}).
+				HTTP(spec.HTTPHints{Method: "GET", Path: "/fastsearch"}).
+				MCP(spec.MCPHints{Annotations: []string{"read", "idempotent"}}).
+				Register(r)
+			return err
+		}},
 	}
 	for _, d := range defs {
 		if err := d.reg(reg); err != nil {
@@ -224,6 +236,51 @@ func indexHandler(_ context.Context, in *IndexArgs) (*indexOut, error) {
 		return nil, err
 	}
 	return &indexOut{Items: stats.Items, Skipped: stats.Skipped}, nil
+}
+
+// ---- fastsearch ----
+
+type FastSearchArgs struct {
+	Index string `json:"index" desc:"索引目录" required:"true"`
+	Text  string `json:"text" desc:"作为查询的文本" required:"true" cli:"positional" http:"query"`
+	K     int    `json:"k" desc:"返回条数" default:"10"`
+}
+
+type fastHitOut struct {
+	Idx     int     `json:"idx"`
+	Path    string  `json:"path"`
+	Source  string  `json:"source"`
+	Name    string  `json:"name"`
+	Desc    string  `json:"desc,omitempty"`
+	Score   float32 `json:"score"`
+	Snippet string  `json:"snippet"`
+}
+
+// fastSearchHandler 走 Engine.FastSearch (纯 BM25, 不跑 BGE)。FastSearch 只
+// 挂在 *gs.Engine 上而非 LiveEngine, 所以这里用一次性 Load, 不复用引擎缓存。
+func fastSearchHandler(_ context.Context, in *FastSearchArgs) ([]fastHitOut, error) {
+	if strings.TrimSpace(in.Text) == "" {
+		return nil, fmt.Errorf("text is required")
+	}
+	eng, err := gs.Load(in.Index)
+	if err != nil {
+		return nil, fmt.Errorf("open index: %w", err)
+	}
+	defer eng.Close()
+	results := eng.FastSearch(in.Text, in.K)
+	out := make([]fastHitOut, 0, len(results))
+	for _, r := range results {
+		out = append(out, fastHitOut{
+			Idx:     r.Idx,
+			Path:    r.Path,
+			Source:  r.Source,
+			Name:    r.Name,
+			Desc:    r.Desc,
+			Score:   r.Score,
+			Snippet: r.Snippet,
+		})
+	}
+	return out, nil
 }
 
 // ---- engine cache ----

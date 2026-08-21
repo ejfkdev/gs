@@ -11,7 +11,7 @@ package main
 import (
 	"os"
 
-	"github.com/ejfkdev/gs/internal/cli"
+	"github.com/ejfkdev/gs/cmd/gs/internal/cli"
 )
 
 func main() {

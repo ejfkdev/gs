@@ -34,10 +34,10 @@ jobs:
             for GOARCH in amd64 arm64; do
               ext=""
               if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-              out="dist/gs-${GOOS}-${GOARCH}${ext}"
-              echo "building ${out}"
-              CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
-                go build -trimpath -ldflags="${LDFLAGS}" -o "$out" ./cmd/gs
+              out="gs-${GOOS}-${GOARCH}${ext}"
+              echo "building dist/${out}"
+              (cd cmd/gs && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" \
+                go build -trimpath -ldflags="${LDFLAGS}" -o "../../dist/${out}" .)
             done
           done
           (cd dist && sha256sum ./* > SHA256SUMS.txt)

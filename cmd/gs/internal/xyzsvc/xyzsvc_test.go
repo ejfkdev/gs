@@ -42,8 +42,8 @@ func TestRegistryCommands(t *testing.T) {
 		t.Fatalf("Registry: %v", err)
 	}
 	names := reg.Names()
-	want := []string{"index", "schema", "search"}
-	if len(names) != 3 || names[0] != want[0] || names[1] != want[1] || names[2] != want[2] {
+	want := []string{"fastsearch", "index", "schema", "search"}
+	if len(names) != 4 || names[0] != want[0] || names[1] != want[1] || names[2] != want[2] || names[3] != want[3] {
 		t.Fatalf("names = %v, want %v", names, want)
 	}
 }
@@ -67,6 +67,19 @@ func TestSearchAndSchemaHandlers(t *testing.T) {
 	}
 	if schema.Name != "t" || len(schema.Fields) != 2 || schema.Fields[0].Name != "name" {
 		t.Fatalf("schema = %+v", schema)
+	}
+}
+
+func TestFastSearchHandler(t *testing.T) {
+	dir := t.TempDir()
+	buildIndex(t, dir)
+
+	res, err := fastSearchHandler(context.Background(), &FastSearchArgs{Index: dir, Text: "nginx 配置与部署的说明文档", K: 5})
+	if err != nil {
+		t.Fatalf("fastSearchHandler: %v", err)
+	}
+	if len(res) == 0 || res[0].Path != "a.md" {
+		t.Fatalf("top = %+v, want a.md", res)
 	}
 }
 

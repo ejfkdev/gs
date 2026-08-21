@@ -13,13 +13,7 @@
 ## 目录结构
 
 ```
-gs/                                     # module: github.com/ejfkdev/gs
-├── cmd/gs/main.go                      # CLI 入口 (单二进制; search/schema/index/serve/mcp + build/watch/version)
-├── internal/cli/                       # gs 本地子命令 + root 派发
-│   ├── cli.go                          # root dispatch (build/watch/version) + 转交 xyz-go
-│   ├── build.go                        # gs build (skills/wiki extractor + walk)
-│   └── watch.go                        # gs watch (fsnotify + 轮询, 原子替换)
-├── internal/xyzsvc/                    # xyz-go 命令定义 (search/schema/index) + 引擎缓存
+gs/                                     # module: github.com/ejfkdev/gs (库)
 ├── *.go                                # gs 库 (package gs, import "github.com/ejfkdev/gs")
 │   ├── types.go                        # Field / Item / Hit / SearchOptions
 │   ├── schema.go                       # Schema (无内置 schema, 随索引落盘为 schema.json)
@@ -30,9 +24,17 @@ gs/                                     # module: github.com/ejfkdev/gs
 │   ├── snippet.go                      # 多 hit snippet (cluster + 不重叠), 高亮
 │   ├── strict.go                       # IP/domain/hash 等固定格式检测 + boost
 │   ├── build.go                        # Builder: interning + 并行 BGE + 增量复用
-│   └── load.go                         # Load: items.bin / emb_*.bin + inverted index 重建
+│   ├── load.go                         # Load: items.bin / emb_*.bin + inverted index 重建
+│   ├── indexcfg.go / indexer_extract.go # 配置驱动索引 (公开 API)
+│   └── live.go / registry.go / embcache.go
 ├── examples/custom_indexer/            # 用库构建自定义 corpus 的示例
-└── indexes/                            # 索引输出目录 (gitignore)
+├── examples/embedded_indexer/          # 声明式配置 + OpenLive 自动重载示例
+└── cmd/gs/                             # module: github.com/ejfkdev/gs/cmd/gs (CLI)
+    ├── go.mod                          # require gs + xyz-go + fsnotify + yaml; replace gs => ../..
+    ├── main.go                         # CLI 入口
+    └── internal/
+        ├── cli/                        # build/watch/version 本地子命令 + root 派发
+        └── xyzsvc/                     # xyz-go 命令定义 (search/fastsearch/schema/index) + 引擎缓存
 ```
 
 ## 公共 API

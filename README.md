@@ -28,21 +28,23 @@ $ gs mcp stdio            # MCP: search/schema/index 三个工具
 
 ## 安装
 
-需要 Go 1.26+。
+需要 Go 1.26+。CLI 是独立 module（`cmd/gs`），库 (`github.com/ejfkdev/gs`) 是它的一个依赖：
 
 ```bash
 git clone https://github.com/ejfkdev/gs
 cd gs
-go build -o bin/gs ./cmd/gs
+(cd cmd/gs && go build -o ../../bin/gs .)
 ```
 
 跨平台交叉编译（纯 Go，无需 C 工具链）：
 
 ```bash
-GOOS=linux  GOARCH=amd64 go build -o bin/gs.linux-amd64  ./cmd/gs
-GOOS=linux  GOARCH=arm64 go build -o bin/gs.linux-arm64  ./cmd/gs
-GOOS=darwin GOARCH=arm64 go build -o bin/gs.darwin-arm64 ./cmd/gs
+(cd cmd/gs && GOOS=linux  GOARCH=amd64 go build -o ../../bin/gs.linux-amd64  .)
+(cd cmd/gs && GOOS=linux  GOARCH=arm64 go build -o ../../bin/gs.linux-arm64  .)
+(cd cmd/gs && GOOS=darwin GOARCH=arm64 go build -o ../../bin/gs.darwin-arm64 .)
 ```
+
+> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖，并用 `replace github.com/ejfkdev/gs => ../..` 指向同仓库的库源码。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
 
 ## 快速上手
 
@@ -84,7 +86,7 @@ gs build skills \
 
 ### 3. 搜索 / 查看 schema
 
-`search`、`schema`、`index` 三个命令都是「一次定义、三通道调用」：既能当 CLI 子命令，也能通过 HTTP REST 和 MCP 工具调用（见下面的 `serve` / `mcp`）。
+`search`、`schema`、`index`、`fastsearch` 四个命令都是「一次定义、三通道调用」：既能当 CLI 子命令，也能通过 HTTP REST 和 MCP 工具调用（见下面的 `serve` / `mcp`）。
 
 ```bash
 # 基础查询 (query 用位置参数; -k/--k 为 top-K)
@@ -95,6 +97,9 @@ gs search --index ./indexes/wiki "database backup" --json | jq .
 
 # 限定搜索字段 (可重复: --fields name --fields description)
 gs search --index ./indexes/wiki "192.168.1.1" --fields name --strict
+
+# 快速搜索: 纯 BM25, 把整段文本当 query (对应旧 --doc; 文件内容用 $(cat f) 传入)
+gs fastsearch --index ./indexes/wiki "nginx 配置与部署的说明文档" -k 5
 
 # 查看 schema (字段定义)
 gs schema ./indexes/wiki
@@ -110,6 +115,7 @@ gs serve --addr :8080
 | 路由 | 说明 |
 |---|---|
 | `GET  /search?index=DIR&query=...&k=10` | 搜索索引 |
+| `GET  /fastsearch?index=DIR&text=...&k=10` | 快速 BM25 搜索（文本作 query） |
 | `GET  /schema?index=DIR` | 查看索引 schema |
 | `POST /index` | 重建索引（JSON body: `config`/`output`/`bge_weights`/`bge_vocab`/`max_embed_runes`/`emb_cache`） |
 | `GET  /openapi.json` | OpenAPI 3 文档 |
@@ -132,7 +138,7 @@ gs mcp sse --addr :8080
 gs mcp http --addr :8080
 ```
 
-`search` / `schema` / `index` 自动成为 MCP 工具，输入/输出 schema 与 REST 同源。给 MCP 客户端（如 Claude、Cursor、Cherry Studio 等）配置 `gs mcp stdio` 即可直接检索本地知识库。
+`search` / `fastsearch` / `schema` / `index` 自动成为 MCP 工具，输入/输出 schema 与 REST 同源。给 MCP 客户端（如 Claude、Cursor、Cherry Studio 等）配置 `gs mcp stdio` 即可直接检索本地知识库。
 
 ### 6. 跨平台传输索引
 
@@ -330,14 +336,7 @@ b.Add(gs.Item{
 ## 目录结构
 
 ```
-gs/
-├── cmd/gs/main.go              # CLI 入口 (单二进制)
-├── internal/cli/               # gs 本地子命令 (build/watch/version) + root 派发
-│   ├── cli.go                  # root dispatch (build/watch/version) + 转交 xyz-go
-│   ├── build.go                # gs build (skills/wiki 或 --config)
-│   └── watch.go                # gs watch (fsnotify + 轮询, 原子替换)
-├── internal/xyzsvc/            # xyz-go 命令定义 (search/schema/index) + 引擎缓存
-├── examples/                   # 可运行示例 (custom_indexer / embedded_indexer)
+gs/                             # module github.com/ejfkdev/gs (库)
 ├── *.go                        # gs 库本身 (import "github.com/ejfkdev/gs")
 │   ├── types.go / schema.go    # 数据类型 + Schema
 │   ├── engine.go               # BM25 + BGE + phrase + strict + rerank 主流程
@@ -347,6 +346,13 @@ gs/
 │   ├── strict.go               # IP/domain/hash 等固定格式检测
 │   ├── build.go                # Builder (string interning + 并行编码)
 │   └── load.go                 # Load (读 items.bin / emb_*.bin)
+├── examples/                   # 可运行示例 (custom_indexer / embedded_indexer)
+├── cmd/gs/                     # module github.com/ejfkdev/gs/cmd/gs (CLI)
+│   ├── go.mod                  # require gs+xyz-go+fsnotify+yaml; replace gs => ../..
+│   ├── main.go                 # CLI 入口 (单二进制)
+│   └── internal/
+│       ├── cli/                # build/watch/version 本地子命令 + root 派发
+│       └── xyzsvc/             # xyz-go 命令定义 (search/fastsearch/schema/index) + 引擎缓存
 └── bin/gs                      # 编译产物 (gitignore)
 ```
 
