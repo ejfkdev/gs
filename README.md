@@ -50,7 +50,7 @@ cd gs
 (cd cmd/gs && GOOS=darwin GOARCH=arm64 go build -o ../../bin/gs.darwin-arm64 .)
 ```
 
-> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖。本地开发用根目录的 `go.work` 把库路径精确 replace 到同仓库源码；线上安装（`go install`）只认已发布的 `vX.Y.Z`（库）与 `cmd/gs/vX.Y.Z`（CLI）tag，与本地 replace 无关。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
+> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖，并以 `require github.com/ejfkdev/gs vX.Y.Z` 固定库版本、**一律走 github/proxy 解析**（本地开发也不用本地源码、无 replace）。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
 
 ## 快速上手
 
@@ -354,7 +354,7 @@ gs/                             # module github.com/ejfkdev/gs (库)
 │   └── load.go                 # Load (读 items.bin / emb_*.bin)
 ├── examples/                   # 可运行示例 (custom_indexer / embedded_indexer)
 ├── cmd/gs/                     # module github.com/ejfkdev/gs/cmd/gs (CLI)
-│   ├── go.mod                  # require gs+xyz-go+fsnotify+yaml; replace gs => ../..
+│   ├── go.mod                  # require gs + xyz-go + fsnotify + yaml（无本地 replace）
 │   ├── main.go                 # CLI 入口 (单二进制)
 │   └── internal/
 │       ├── cli/                # build/watch/version 本地子命令 + root 派发

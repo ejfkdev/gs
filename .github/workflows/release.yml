@@ -5,7 +5,7 @@ name: release
 on:
   push:
     tags:
-      - 'v*'
+      - 'cmd/gs/v*'
 
 permissions:
   contents: write
@@ -28,6 +28,8 @@ jobs:
         env:
           CGO_ENABLED: '0'
           LDFLAGS: '-s -w'
+          # 刚打出的库 tag 可能还没进 proxy.golang.org, fallback 到 direct 走 git remote
+          GOPROXY: 'https://proxy.golang.org,direct'
         run: |
           mkdir -p dist
           for GOOS in linux darwin windows; do
