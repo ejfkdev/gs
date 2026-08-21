@@ -30,7 +30,7 @@ gs/                                     # module: github.com/ejfkdev/gs (库)
 ├── examples/custom_indexer/            # 用库构建自定义 corpus 的示例
 ├── examples/embedded_indexer/          # 声明式配置 + OpenLive 自动重载示例
 └── cmd/gs/                             # module: github.com/ejfkdev/gs/cmd/gs (CLI)
-    ├── go.mod                          # require gs + xyz-go + fsnotify + yaml（无本地 replace）
+    ├── go.mod                          # require gs + xyz-go + fsnotify + yaml; replace gs => ../..
     ├── main.go                         # CLI 入口
     └── internal/
         ├── cli/                        # build/watch/version 本地子命令 + root 派发

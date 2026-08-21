@@ -21,3 +21,7 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 )
+
+// 本地开发与 CI 用同仓库的库源码（每次编译都是最新）；go install 会忽略
+// 该 replace，按 require 的版本号走 github/proxy 解析发布版本。
+replace github.com/ejfkdev/gs => ../..
