@@ -21,7 +21,3 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
 )
-
-// 嵌套 module: CLI 与库同仓库。本地/CI 构建直接指向父目录的库源码，
-// 无需先给库打 tag；发布二进制时再由 release workflow 打包 cmd/gs。
-replace github.com/ejfkdev/gs => ../..

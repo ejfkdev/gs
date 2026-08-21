@@ -28,7 +28,13 @@ $ gs mcp stdio            # MCP: search/schema/index 三个工具
 
 ## 安装
 
-需要 Go 1.26+。CLI 是独立 module（`cmd/gs`），库 (`github.com/ejfkdev/gs`) 是它的一个依赖：
+需要 Go 1.26+。推荐直接用 `go install` 安装 CLI（库 `github.com/ejfkdev/gs` 是其依赖，会自动解析）：
+
+```bash
+go install github.com/ejfkdev/gs/cmd/gs@latest
+```
+
+或从源码构建：
 
 ```bash
 git clone https://github.com/ejfkdev/gs
@@ -44,7 +50,7 @@ cd gs
 (cd cmd/gs && GOOS=darwin GOARCH=arm64 go build -o ../../bin/gs.darwin-arm64 .)
 ```
 
-> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖，并用 `replace github.com/ejfkdev/gs => ../..` 指向同仓库的库源码。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
+> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖。本地开发用根目录的 `go.work` 把库路径精确 replace 到同仓库源码；线上安装（`go install`）只认已发布的 `vX.Y.Z`（库）与 `cmd/gs/vX.Y.Z`（CLI）tag，与本地 replace 无关。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
 
 ## 快速上手
 

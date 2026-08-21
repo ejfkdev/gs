@@ -10,8 +10,8 @@
 /examples/indexes/
 
 # Go 工作区文件
-go.work
-go.work.sum
+# 注: go.work 现在需要提交, 用于本仓库「库 + CLI」双 module 的本地开发;
+# 不再忽略 go.work / go.work.sum。
 
 # 编辑器 / 系统
 *.swp
