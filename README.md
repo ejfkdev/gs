@@ -50,7 +50,13 @@ cd gs
 (cd cmd/gs && GOOS=darwin GOARCH=arm64 go build -o ../../bin/gs.darwin-arm64 .)
 ```
 
-> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖，并用 `replace github.com/ejfkdev/gs => ../..` 让本地与 CI 编译直接用同仓库最新库源码（每次编译都是最新）。`go install` 会忽略该 replace、按 `require` 的版本号走 github/proxy 解析发布版本。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
+> **模块结构**：仓库是「库 + CLI」两个 Go module。根 `go.mod` 只含库依赖（`gonum` + `yaml.v3`），**不引入 xyz-go**；`cmd/gs/go.mod` 才 require xyz-go、fsnotify 等 CLI 依赖，并保持干净（无本地 replace，`go install` 才能解析）。本地与 CI 编译用根目录 `go.work` 的 `replace gs => .` 指向同仓库最新库源码（每次编译都是最新）；`go install` 不读 `go.work`，按 `cmd/gs/go.mod` 里 `require` 的版本号走 github/proxy 解析发布版本。所以 `import "github.com/ejfkdev/gs"` 当库用时，模块图里不会出现 xyz-go / MCP SDK。
+>
+> **发版**：打一个 `vX.Y.Z` tag 即触发 CI 交叉编译并发布二进制（库与 CLI 共用一个版本号）：
+>
+> ```bash
+> ./scripts/release.sh v0.3.3   # 同时打 v0.3.3 与 cmd/gs/v0.3.3 并推送
+> ```
 
 ## 快速上手
 

@@ -1,14 +1,12 @@
 name: release
 
-# 打 tag 即触发：
-#   - v*          : 库版本 —— 只做 test + CLI 编译 sanity, 不发二进制
-#   - cmd/gs/v*   : CLI 版本 —— 全目标交叉编译并上传 GitHub Release
-# 避免同时打两个 tag 时产生两份重复 Release。
+# 打 v* tag 即触发完整发布: test + build + 交叉编译 6 目标 + 上传 GitHub Release。
+# 库与 CLI 共用一个版本号; cmd/gs/v* tag 只是供 `go install` 解析 CLI module 版本,
+# 不再单独触发 workflow (见 scripts/release.sh)。
 on:
   push:
     tags:
       - 'v*'
-      - 'cmd/gs/v*'
 
 permissions:
   contents: write
@@ -27,13 +25,12 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Test & build (both library and CLI tags)
+      - name: Test & build
         run: |
           go test ./...
           (cd cmd/gs && go vet ./... && go test ./... && go build ./...)
 
-      - name: Cross-compile all targets (CLI release only)
-        if: startsWith(github.ref, 'refs/tags/cmd/gs/v')
+      - name: Cross-compile all targets
         env:
           CGO_ENABLED: '0'
           LDFLAGS: '-s -w'
@@ -52,8 +49,7 @@ jobs:
           (cd dist && sha256sum ./* > SHA256SUMS.txt)
           ls -l dist
 
-      - name: Upload binaries to release (CLI release only)
-        if: startsWith(github.ref, 'refs/tags/cmd/gs/v')
+      - name: Upload binaries to release
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
