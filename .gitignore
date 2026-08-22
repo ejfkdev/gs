@@ -9,10 +9,6 @@
 # 示例与演示数据 (体积大, 可再生成); 示例代码本身照常入库
 /examples/indexes/
 
-# Go 工作区文件
-go.work
-go.work.sum
-
 # 编辑器 / 系统
 *.swp
 *.tmp
