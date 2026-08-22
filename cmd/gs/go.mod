@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/ejfkdev/gs v0.3.1
-	github.com/ejfkdev/xyz-go v0.2.2
+	github.com/ejfkdev/xyz-go v0.2.4
 	github.com/fsnotify/fsnotify v1.10.1
 	gopkg.in/yaml.v3 v3.0.1
 )

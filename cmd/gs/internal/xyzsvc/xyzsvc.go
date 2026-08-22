@@ -36,9 +36,19 @@ func Registry() (*registry.Registry, error) {
 			_, err := spec.Define("search", searchHandler).
 				Summary("搜索索引").
 				Description("对指定索引目录执行混合检索（BM25 + BGE），返回按相关度排序的命中列表。").
-				CLI(spec.CliHints{Fields: map[string]spec.CliFieldHint{
-					"k": {Shorthand: "k"},
-				}}).
+				CLI(spec.CliHints{
+					Fields: map[string]spec.CliFieldHint{
+						"k": {Shorthand: "k"},
+					},
+					After: `示例:
+  gs search --index ./indexes/wiki "nginx 配置" -k 5
+  GS_INDEX=./indexes/wiki gs search "database backup" --json | jq .
+  gs search --index ./indexes/wiki "192.168.1.1" --fields name --strict
+
+提示:
+  --fields 可重复, 只限定参与搜索的字段; 默认输出人读表格, --json 得到 JSON
+  (HTTP/MCP 返回的也是这种 JSON: id/score/path/source/tags/fields/snippet)。`,
+				}).
 				HTTP(spec.HTTPHints{Method: "GET", Path: "/search"}).
 				MCP(spec.MCPHints{Annotations: []string{"read", "idempotent"}}).
 				Register(r)
@@ -48,6 +58,14 @@ func Registry() (*registry.Registry, error) {
 			_, err := spec.Define("schema", schemaHandler).
 				Summary("查看索引 schema").
 				Description("读取索引目录的 schema.json，返回库名与全部字段定义（类型/可搜索/可嵌入/权重等）。").
+				CLI(spec.CliHints{
+					After: `示例:
+  gs schema ./indexes/wiki
+  gs schema ./indexes/wiki --json
+
+提示:
+  索引目录用位置参数传入; 输出字段的 name/type/searchable/embeddable/weight 等。`,
+				}).
 				HTTP(spec.HTTPHints{Method: "GET", Path: "/schema"}).
 				MCP(spec.MCPHints{Annotations: []string{"read", "idempotent"}}).
 				Register(r)
@@ -57,6 +75,15 @@ func Registry() (*registry.Registry, error) {
 			_, err := spec.Define("index", indexHandler).
 				Summary("重建索引").
 				Description("按配置 YAML（schema + sources + mapping）重建索引到输出目录。首次构建需提供 BGE 权重与词表，之后可从索引目录自动读取。").
+				CLI(spec.CliHints{
+					After: `示例:
+  gs index --config index.yaml --output ./indexes/myindex \
+      --bge_weights ./model/model.safetensors --bge_vocab ./model/vocab.txt
+
+提示:
+  首次构建需提供 bge_weights/bge_vocab; 之后从索引目录自动读取, 无需再传。
+  emb_cache 可选, 用于增量重建 (只重算变更文档)。`,
+				}).
 				HTTP(spec.HTTPHints{Method: "POST", Path: "/index"}).
 				MCP(spec.MCPHints{Annotations: []string{"write"}}).
 				Register(r)
@@ -66,9 +93,17 @@ func Registry() (*registry.Registry, error) {
 			_, err := spec.Define("fastsearch", fastSearchHandler).
 				Summary("快速搜索（纯 BM25，文本作 query）").
 				Description("把一整段文本当作查询做纯 BM25 检索，不跑 BGE，毫秒级返回。对应旧 CLI 的 --doc 能力。").
-				CLI(spec.CliHints{Fields: map[string]spec.CliFieldHint{
-					"k": {Shorthand: "k"},
-				}}).
+				CLI(spec.CliHints{
+					Fields: map[string]spec.CliFieldHint{
+						"k": {Shorthand: "k"},
+					},
+					After: `示例:
+  gs fastsearch --index ./indexes/wiki "nginx 配置与部署的说明文档" -k 5
+  GS_INDEX=./indexes/wiki gs fastsearch "docker compose 容器编排" --json
+
+提示:
+  纯 BM25 (不跑 BGE), 把整段文本当 query, 适合把长文档/文件内容直接丢进来。`,
+				}).
 				HTTP(spec.HTTPHints{Method: "GET", Path: "/fastsearch"}).
 				MCP(spec.MCPHints{Annotations: []string{"read", "idempotent"}}).
 				Register(r)

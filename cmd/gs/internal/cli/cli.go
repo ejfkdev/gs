@@ -20,18 +20,22 @@ const rootUsage = `gs — hybrid (BM25 + BGE) full-text search for local knowled
 Usage:
   gs <command> [arguments] [flags]
 
-Commands (defined once, callable from CLI / HTTP / MCP):
-  search    Query a prebuilt index
-  schema    Show an index's schema (fields and types)
-  index     Rebuild an index from a config YAML
-  serve     Start the HTTP service (REST + /openapi.json + /mcp)
-  mcp       Start an MCP tool server (stdio|sse|http)
+Commands (one definition; CLI / HTTP / MCP):
+  fastsearch  Fast BM25 search (text as query)
+  index       Rebuild an index from a config YAML
+  schema      Show an index's schema (field definitions)
+  search      Search a prebuilt index
 
-Local build / daemon commands:
-  build     Build an index from a source tree (skills/wiki/config)
-  watch     Watch source dirs and rebuild on change (atomic swap)
+Modes:
+  serve       HTTP service (REST + /openapi.json + /mcp)
+  mcp         MCP tool server (stdio|sse|http)
 
-  -v        Print version information
+Local commands:
+  build       Build an index (skills/wiki or --config)
+  watch       Watch source dirs and rebuild on change (atomic swap)
+
+Environment:
+  GS_INDEX    Default index directory (search/fastsearch)
 
 Run "gs <command> -h" for command-specific help.
 `
