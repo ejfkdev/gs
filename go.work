@@ -8,4 +8,4 @@ use (
 // 本地开发与 CI: 让 cmd/gs 直接用同仓库的库源码 (每次编译都是最新)。
 // 该 replace 只作用于 go.work (本地 workspace); go install 不读 go.work,
 // 仍按 cmd/gs/go.mod 里 require 的版本号走 github/proxy 解析发布版本。
-replace github.com/ejfkdev/gs v0.3.1 => .
+replace github.com/ejfkdev/gs v0.3.3 => .

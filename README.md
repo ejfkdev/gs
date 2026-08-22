@@ -142,7 +142,7 @@ curl 'localhost:8080/schema?index=./indexes/wiki'
 curl -s localhost:8080/openapi.json | jq .
 ```
 
-`serve` 背后是 `gs.OpenLive` 自动重载：配合 `gs watch`，索引更新后无需重启服务。若 `serve` 要暴露到非本机，用 `gs serve --bearer tok1,tok2`（或 `--xyz.bearer`）给 REST 与 `/mcp` 加 Bearer 鉴权——`POST /index` 属写操作，建议加保护。
+`serve` 背后是 `gs.OpenLive` 自动重载：配合 `gs watch`，索引更新后无需重启服务。服务端可用 `--default k=v` 给所有命令注入默认参数，例如 `gs serve --default index=./indexes/wiki` 后 `/search`、`/schema` 不必再带 `index`（`gs mcp` 同理）。若 `serve` 要暴露到非本机，用 `gs serve --bearer tok1,tok2`（或 `--xyz.bearer`）给 REST 与 `/mcp` 加 Bearer 鉴权——`POST /index` 属写操作，建议加保护。
 
 ### 5. MCP 工具服务（gs mcp）
 

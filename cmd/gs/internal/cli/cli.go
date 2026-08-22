@@ -13,7 +13,7 @@ import (
 )
 
 // Version: 与 cmd/gs 二进制对应的版本号
-const Version = "0.3.2"
+const Version = "0.3.3"
 
 // rootUsage 顶部带上程序名 + 版本号 + 描述 + 仓库地址, 便于一眼确认版本。
 func rootUsage() string {
