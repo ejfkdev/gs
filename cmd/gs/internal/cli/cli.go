@@ -76,7 +76,9 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	return xyz.Run(reg, args)
+	// 界面语言固定中文 (与命令的 Summary/Description 一致); 用户可用
+	// --xyz.lang=en 覆盖, 或改这里让 xyz 走 LANG 自动检测。
+	return xyz.RunConfig(reg, args, xyz.Config{Lang: "zh-CN"})
 }
 
 // printErr: 统一错误输出; -h 触发的 flag.ErrHelp 视为正常退出。
