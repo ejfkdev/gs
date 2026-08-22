@@ -112,6 +112,8 @@ gs schema ./indexes/wiki
 gs schema ./indexes/wiki --json
 ```
 
+> CLI 下可用环境变量 `GS_INDEX` 指定默认索引目录（`search` / `fastsearch` 用），省去每次 `--index`。
+
 ### 4. HTTP 服务（gs serve）
 
 ```bash
@@ -134,7 +136,7 @@ curl 'localhost:8080/schema?index=./indexes/wiki'
 curl -s localhost:8080/openapi.json | jq .
 ```
 
-`serve` 背后是 `gs.OpenLive` 自动重载：配合 `gs watch`，索引更新后无需重启服务。
+`serve` 背后是 `gs.OpenLive` 自动重载：配合 `gs watch`，索引更新后无需重启服务。若 `serve` 要暴露到非本机，用 `gs serve --bearer tok1,tok2`（或 `--xyz.bearer`）给 REST 与 `/mcp` 加 Bearer 鉴权——`POST /index` 属写操作，建议加保护。
 
 ### 5. MCP 工具服务（gs mcp）
 

@@ -68,3 +68,22 @@ func TestLiveEngineCloseIdempotent(t *testing.T) {
 		t.Fatalf("second Close: %v", err)
 	}
 }
+
+// TestLiveEngineFastSearch: FastSearch 走自动重载引擎, 返回纯 BM25 结果。
+func TestLiveEngineFastSearch(t *testing.T) {
+	dir := t.TempDir()
+	buildTo(t, dir, "Alpha", "Beta")
+	l, err := OpenLive(dir, time.Second)
+	if err != nil {
+		t.Fatalf("OpenLive: %v", err)
+	}
+	defer l.Close()
+
+	res := l.FastSearch("alpha", 5)
+	if len(res) == 0 {
+		t.Fatal("FastSearch returned no results")
+	}
+	if res[0].Name != "Alpha" {
+		t.Fatalf("top = %+v, want Alpha", res[0])
+	}
+}

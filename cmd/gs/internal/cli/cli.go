@@ -13,7 +13,7 @@ import (
 )
 
 // Version: 与 cmd/gs 二进制对应的版本号
-const Version = "0.3.0"
+const Version = "0.3.1"
 
 const rootUsage = `gs — hybrid (BM25 + BGE) full-text search for local knowledge bases.
 

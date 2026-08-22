@@ -71,6 +71,7 @@ func TestSearchAndSchemaHandlers(t *testing.T) {
 }
 
 func TestFastSearchHandler(t *testing.T) {
+	t.Cleanup(Close)
 	dir := t.TempDir()
 	buildIndex(t, dir)
 

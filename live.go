@@ -61,6 +61,14 @@ func (l *LiveEngine) Search(ctx context.Context, opts SearchOptions) ([]Hit, err
 	return l.eng.Search(ctx, opts)
 }
 
+// FastSearch: 同 Engine.FastSearch (纯 BM25, 不跑 BGE), 走自动重载引擎。
+// 与 Search 一样持读锁到结束, 保证重载不会把在用的引擎关掉。
+func (l *LiveEngine) FastSearch(doc string, k int) []FastSearchResult {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.eng.FastSearch(doc, k)
+}
+
 // Close: 停止重载并关闭当前引擎。可安全重入。
 func (l *LiveEngine) Close() error {
 	var err error

@@ -88,7 +88,7 @@ func Registry() (*registry.Registry, error) {
 // SearchArgs 是 search 命令的三通道入参: Query 在 CLI 是位置参数, 在
 // HTTP/MCP 是 query 参数; 其余字段在三种通道下含义一致。
 type SearchArgs struct {
-	Index  string   `json:"index" desc:"索引目录" required:"true"`
+	Index  string   `json:"index" desc:"索引目录" required:"true" cli:"env=GS_INDEX"`
 	Query  string   `json:"query" desc:"查询关键词" required:"true" cli:"positional" http:"query"`
 	K      int      `json:"k" desc:"返回条数" default:"10"`
 	Fields []string `json:"fields" desc:"限定搜索字段（空=全部可搜索字段）"`
@@ -241,7 +241,7 @@ func indexHandler(_ context.Context, in *IndexArgs) (*indexOut, error) {
 // ---- fastsearch ----
 
 type FastSearchArgs struct {
-	Index string `json:"index" desc:"索引目录" required:"true"`
+	Index string `json:"index" desc:"索引目录" required:"true" cli:"env=GS_INDEX"`
 	Text  string `json:"text" desc:"作为查询的文本" required:"true" cli:"positional" http:"query"`
 	K     int    `json:"k" desc:"返回条数" default:"10"`
 }
@@ -256,17 +256,16 @@ type fastHitOut struct {
 	Snippet string  `json:"snippet"`
 }
 
-// fastSearchHandler 走 Engine.FastSearch (纯 BM25, 不跑 BGE)。FastSearch 只
-// 挂在 *gs.Engine 上而非 LiveEngine, 所以这里用一次性 Load, 不复用引擎缓存。
+// fastSearchHandler 走 LiveEngine.FastSearch (纯 BM25, 不跑 BGE), 与 search
+// 共用引擎缓存, 长驻 serve/mcp 时不反复读盘解析索引。
 func fastSearchHandler(_ context.Context, in *FastSearchArgs) ([]fastHitOut, error) {
 	if strings.TrimSpace(in.Text) == "" {
 		return nil, fmt.Errorf("text is required")
 	}
-	eng, err := gs.Load(in.Index)
+	eng, err := engineFor(in.Index)
 	if err != nil {
-		return nil, fmt.Errorf("open index: %w", err)
+		return nil, err
 	}
-	defer eng.Close()
 	results := eng.FastSearch(in.Text, in.K)
 	out := make([]fastHitOut, 0, len(results))
 	for _, r := range results {
