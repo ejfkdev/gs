@@ -15,7 +15,10 @@ import (
 // Version: 与 cmd/gs 二进制对应的版本号
 const Version = "0.3.2"
 
-const rootUsage = `gs — hybrid (BM25 + BGE) full-text search for local knowledge bases.
+// rootUsage 顶部带上程序名 + 版本号 + 描述 + 仓库地址, 便于一眼确认版本。
+func rootUsage() string {
+	return "gs v" + Version + ` — hybrid (BM25 + BGE) full-text search for local knowledge bases.
+https://github.com/ejfkdev/gs
 
 Usage:
   gs <command> [arguments] [flags]
@@ -39,6 +42,7 @@ Environment:
 
 Run "gs <command> -h" for command-specific help.
 `
+}
 
 // Run: 执行 root 命令, 返回进程退出码 (0 成功, 1 运行错误, 2 用法错误)。
 //
@@ -51,12 +55,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if len(args) == 0 {
-		fmt.Fprint(stdout, rootUsage)
+		fmt.Fprint(stdout, rootUsage())
 		return 0
 	}
 	switch args[0] {
 	case "-h", "--help", "help":
-		fmt.Fprint(stdout, rootUsage)
+		fmt.Fprint(stdout, rootUsage())
 		return 0
 	case "version", "--version", "-V", "-v":
 		fmt.Fprintf(stdout, "gs %s (github.com/ejfkdev/gs)\n", Version)
